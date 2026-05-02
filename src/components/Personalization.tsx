@@ -17,8 +17,8 @@ const Personalization: React.FC = () => {
             {chips.map((chip, i) => (
               <motion.div
                 key={i}
-                whileHover={{ scale: 1.05, backgroundColor: 'rgba(41, 201, 139, 0.15)', borderColor: 'var(--accent-primary)' }}
-                style={{ padding: '0.5rem 1rem', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '2rem', fontSize: '0.875rem', color: i < 3 ? 'var(--accent-primary)' : 'var(--text-secondary)', borderColor: i < 3 ? 'var(--accent-primary)' : 'var(--border)', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', transition: 'all 0.2s' }}
+                whileHover={{ scale: 1.05, backgroundColor: 'rgba(41, 201, 139, 0.15)', borderColor: 'var(--accent-primary)', transition: { duration: 0.4 } }}
+                style={{ padding: '0.5rem 1rem', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '2rem', fontSize: '0.875rem', color: i < 3 ? 'var(--accent-primary)' : 'var(--text-secondary)', borderColor: i < 3 ? 'var(--accent-primary)' : 'var(--border)', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', transition: 'all 0.4s ease' }}
               >
                 {i < 3 && <Check size={14} />}
                 {chip}

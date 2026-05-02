@@ -5,7 +5,6 @@ import ValueStrip from './components/ValueStrip';
 import Features from './components/Features';
 import HowItWorks from './components/HowItWorks';
 import Personalization from './components/Personalization';
-import Recommendation from './components/Recommendation';
 import AuthUI from './components/AuthUI';
 import FinalCTA from './components/FinalCTA';
 import Footer from './components/Footer';
@@ -24,7 +23,6 @@ function App() {
         <Features />
         <HowItWorks />
         <Personalization />
-        <Recommendation />
         <FinalCTA />
       </main>
 

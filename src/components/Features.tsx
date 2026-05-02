@@ -26,9 +26,9 @@ const Features: React.FC = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.1 }}
-              whileHover={{ y: -5, boxShadow: 'var(--shadow-elevated)', borderColor: 'var(--accent-primary)' }}
+              whileHover={{ y: -5, boxShadow: 'var(--shadow-elevated)', borderColor: 'var(--accent-primary)', transition: { duration: 0.4 } }}
               className="glass"
-              style={{ padding: '2rem', borderRadius: '1rem', transition: 'all 0.3s ease', cursor: 'default' }}
+              style={{ padding: '2rem', borderRadius: '1rem', transition: 'all 0.4s ease', cursor: 'pointer' }}
             >
               <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(41, 201, 139, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-primary)', marginBottom: '1.5rem', boxShadow: 'var(--shadow-glow)' }}>
                 {feat.icon}

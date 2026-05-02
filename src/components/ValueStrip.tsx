@@ -19,8 +19,9 @@ const ValueStrip: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
+            whileHover={{ scale: 1.05, color: 'var(--text-primary)', transition: { duration: 0.4 } }}
             transition={{ delay: i * 0.1 }}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-secondary)' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-secondary)', cursor: 'default', transition: 'color 0.4s ease' }}
           >
             <div style={{ color: 'var(--accent-primary)' }}>{value.icon}</div>
             <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{value.text}</span>

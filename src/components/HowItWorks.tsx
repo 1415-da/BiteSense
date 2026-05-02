@@ -30,10 +30,14 @@ const HowItWorks: React.FC = () => {
               <div style={{ width: '48px', height: '48px', margin: '0 auto 1.5rem', background: 'var(--bg-primary)', border: '2px solid var(--accent-primary)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: 'var(--accent-primary)', boxShadow: 'var(--shadow-glow)' }}>
                 {step.num}
               </div>
-              <div className="glass" style={{ padding: '2rem', borderRadius: '1rem' }}>
+              <motion.div 
+                className="glass" 
+                style={{ padding: '2rem', borderRadius: '1rem', transition: 'border-color 0.4s ease' }}
+                whileHover={{ scale: 1.02, borderColor: 'var(--accent-primary)', transition: { duration: 0.4 } }}
+              >
                 <h3 style={{ fontSize: '1.25rem', marginBottom: '0.75rem' }}>{step.title}</h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{step.desc}</p>
-              </div>
+              </motion.div>
             </motion.div>
           ))}
         </div>
