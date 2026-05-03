@@ -1,4 +1,5 @@
 import React from 'react';
+import logo from '../assets/logo.png';
 import type { LegalDialogKind } from './InfoDialog';
 
 interface FooterProps {
@@ -12,7 +13,7 @@ const Footer: React.FC<FooterProps> = ({ onLegalOpen }) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '2rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <a href="#top" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '1.25rem', color: 'var(--text-primary)' }}>
-              <div style={{ width: '20px', height: '20px', borderRadius: '4px', background: 'var(--accent-primary)' }}></div>
+              <img src={logo} alt="Bite Sense logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
               Bite Sense
             </a>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>

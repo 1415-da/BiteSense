@@ -1,5 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+
+import { useAuth } from '../auth/AuthContext';
 import previewImage from '../assets/image copy.png';
 
 interface HeroProps {
@@ -8,6 +11,9 @@ interface HeroProps {
 }
 
 const Hero: React.FC<HeroProps> = ({ onGetStarted, onSignIn }) => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
   return (
     <section className="section" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
       {/* Background Orbs */}
@@ -28,8 +34,17 @@ const Hero: React.FC<HeroProps> = ({ onGetStarted, onSignIn }) => {
             Bite Sense scans restaurant menus and recommends the best choices based on your unique profile, dietary restrictions, and health goals.
           </motion.p>
           <motion.div style={{ display: 'flex', gap: '1rem' }}>
-            <button type="button" className="btn btn-primary" style={{ padding: '1rem 2rem', fontSize: '1.125rem' }} onClick={onGetStarted}>Get Started</button>
-            <button type="button" className="btn btn-outline" style={{ padding: '1rem 2rem', fontSize: '1.125rem' }} onClick={onSignIn}>Sign In</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ padding: '1rem 2rem', fontSize: '1.125rem' }}
+              onClick={user ? () => navigate('/dashboard') : onGetStarted}
+            >
+              Get Started
+            </button>
+            {!user && (
+              <button type="button" className="btn btn-outline" style={{ padding: '1rem 2rem', fontSize: '1.125rem' }} onClick={onSignIn}>Sign In</button>
+            )}
           </motion.div>
         </motion.div>
 

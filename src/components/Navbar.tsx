@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../auth/AuthContext';
+import logo from '../assets/logo.png';
 import type { LegalDialogKind } from './InfoDialog';
 
 interface NavbarProps {
@@ -50,7 +51,7 @@ const Navbar: React.FC<NavbarProps> = ({ onAuthClick, onLegalOpen }) => {
         onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '1.25rem', color: 'var(--text-primary)' }}
       >
-        <div style={{ width: '24px', height: '24px', borderRadius: '4px', background: 'var(--accent-primary)' }}></div>
+        <img src={logo} alt="Bite Sense logo" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
         Bite Sense
       </a>
 

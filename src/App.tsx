@@ -1,4 +1,7 @@
 import React from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
+
+import { useAuth } from './auth/AuthContext';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import ValueStrip from './components/ValueStrip';
@@ -9,9 +12,10 @@ import AuthUI from './components/AuthUI';
 import FinalCTA from './components/FinalCTA';
 import Footer from './components/Footer';
 import InfoDialog, { type LegalDialogKind } from './components/InfoDialog';
+import DashboardPage from './pages/DashboardPage';
 import './App.css';
 
-function App() {
+const LandingPage: React.FC = () => {
   const [showAuth, setShowAuth] = React.useState<'none' | 'signin' | 'signup'>('none');
   const [legalDialog, setLegalDialog] = React.useState<'none' | LegalDialogKind>('none');
 
@@ -52,6 +56,36 @@ function App() {
         <InfoDialog kind={legalDialog} onClose={() => setLegalDialog('none')} />
       )}
     </div>
+  );
+};
+
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--text-secondary)' }}>
+        Loading…
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route
+        path="/dashboard"
+        element={(
+          <ProtectedRoute>
+            <DashboardPage />
+          </ProtectedRoute>
+        )}
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 

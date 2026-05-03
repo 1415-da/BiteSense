@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
 
@@ -12,6 +13,7 @@ interface AuthUIProps {
 
 const AuthUI: React.FC<AuthUIProps> = ({ initialView, onClose }) => {
   const { login, register, loginWithGoogle, googleClientId } = useAuth();
+  const navigate = useNavigate();
   const [view, setView] = useState<'signin' | 'signup'>(initialView);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -48,6 +50,7 @@ const AuthUI: React.FC<AuthUIProps> = ({ initialView, onClose }) => {
           await login(email.trim(), password);
         }
         onClose();
+        navigate('/dashboard');
       } catch (err) {
         setFormError(err instanceof Error ? err.message : 'Something went wrong.');
       } finally {
@@ -122,6 +125,7 @@ const AuthUI: React.FC<AuthUIProps> = ({ initialView, onClose }) => {
                   try {
                     await loginWithGoogle(cred.credential);
                     onClose();
+                    navigate('/dashboard');
                   } catch (err) {
                     setFormError(err instanceof Error ? err.message : 'Google sign-in failed.');
                   } finally {
