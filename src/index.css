@@ -90,6 +90,12 @@ button {
   transform: translateY(-1px);
 }
 
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .btn-outline {
   border: 1px solid var(--border);
   color: var(--text-primary);

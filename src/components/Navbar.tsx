@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useAuth } from '../auth/AuthContext';
 import type { LegalDialogKind } from './InfoDialog';
 
 interface NavbarProps {
@@ -12,6 +13,7 @@ const scrollToId = (id: string) => {
 };
 
 const Navbar: React.FC<NavbarProps> = ({ onAuthClick, onLegalOpen }) => {
+  const { user, loading, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -59,9 +61,39 @@ const Navbar: React.FC<NavbarProps> = ({ onAuthClick, onLegalOpen }) => {
         <a href="#contact" onClick={(e) => { e.preventDefault(); onLegalOpen('contact'); }} style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Contact</a>
       </div>
 
-      <div style={{ display: 'flex', gap: '1rem' }}>
-        <button type="button" className="btn btn-outline" onClick={() => onAuthClick('signin')} style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Sign In</button>
-        <button type="button" className="btn btn-primary" onClick={() => onAuthClick('signup')} style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Sign Up</button>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        {loading ? (
+          <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', minWidth: '5rem', textAlign: 'right' }}>…</span>
+        ) : user ? (
+          <>
+            <span
+              style={{
+                fontSize: '0.8125rem',
+                color: 'var(--text-secondary)',
+                maxWidth: '10rem',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={user.email}
+            >
+              {user.full_name}
+            </span>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => void logout()}
+              style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+            >
+              Log out
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="btn btn-outline" onClick={() => onAuthClick('signin')} style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Sign In</button>
+            <button type="button" className="btn btn-primary" onClick={() => onAuthClick('signup')} style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Sign Up</button>
+          </>
+        )}
       </div>
     </motion.nav>
   );
