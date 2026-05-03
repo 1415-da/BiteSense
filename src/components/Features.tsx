@@ -2,7 +2,11 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ScanLine, Crosshair, HeartPulse, MessageSquareText } from 'lucide-react';
 
-const Features: React.FC = () => {
+interface FeaturesProps {
+  onGetStarted: () => void;
+}
+
+const Features: React.FC<FeaturesProps> = ({ onGetStarted }) => {
   const features = [
     { icon: <ScanLine size={24} />, title: 'Scan Menus', desc: 'Instantly parse menus from a URL, image, or photo.' },
     { icon: <Crosshair size={24} />, title: 'Personalized Goals', desc: 'Get recommendations based on your unique fitness goals.' },
@@ -11,7 +15,7 @@ const Features: React.FC = () => {
   ];
 
   return (
-    <section id="features" className="section" style={{ background: 'var(--bg-primary)' }}>
+    <section id="features" className="section" style={{ background: 'var(--bg-primary)', scrollMarginTop: '5rem' }}>
       <div className="container">
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ textAlign: 'center', marginBottom: '4rem' }}>
           <h2 style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Smarter ordering, powered by data</h2>
@@ -29,6 +33,10 @@ const Features: React.FC = () => {
               whileHover={{ y: -5, boxShadow: 'var(--shadow-elevated)', borderColor: 'var(--accent-primary)', transition: { duration: 0.4 } }}
               className="glass"
               style={{ padding: '2rem', borderRadius: '1rem', transition: 'all 0.4s ease', cursor: 'pointer' }}
+              onClick={onGetStarted}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onGetStarted(); } }}
+              role="button"
+              tabIndex={0}
             >
               <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(41, 201, 139, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-primary)', marginBottom: '1.5rem', boxShadow: 'var(--shadow-glow)' }}>
                 {feat.icon}

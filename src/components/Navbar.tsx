@@ -1,11 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import type { LegalDialogKind } from './InfoDialog';
 
 interface NavbarProps {
   onAuthClick: (type: 'signin' | 'signup') => void;
+  onLegalOpen: (kind: LegalDialogKind) => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ onAuthClick }) => {
+const scrollToId = (id: string) => {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+const Navbar: React.FC<NavbarProps> = ({ onAuthClick, onLegalOpen }) => {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -37,22 +43,25 @@ const Navbar: React.FC<NavbarProps> = ({ onAuthClick }) => {
         alignItems: 'center',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '1.25rem', color: 'var(--text-primary)' }}>
+      <a
+        href="#top"
+        onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '1.25rem', color: 'var(--text-primary)' }}
+      >
         <div style={{ width: '24px', height: '24px', borderRadius: '4px', background: 'var(--accent-primary)' }}></div>
         Bite Sense
-      </div>
+      </a>
 
       <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-        {['Features', 'How It Works', 'Privacy', 'Contact'].map((item) => (
-          <a key={item} href={`#${item.toLowerCase().replace(/ /g, '-')}`} style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
-            {item}
-          </a>
-        ))}
+        <a href="#features" onClick={(e) => { e.preventDefault(); scrollToId('features'); }} style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Features</a>
+        <a href="#how-it-works" onClick={(e) => { e.preventDefault(); scrollToId('how-it-works'); }} style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>How It Works</a>
+        <a href="#privacy-policy" onClick={(e) => { e.preventDefault(); onLegalOpen('privacy'); }} style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Privacy</a>
+        <a href="#contact" onClick={(e) => { e.preventDefault(); onLegalOpen('contact'); }} style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Contact</a>
       </div>
 
       <div style={{ display: 'flex', gap: '1rem' }}>
-        <button className="btn btn-outline" onClick={() => onAuthClick('signin')} style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Sign In</button>
-        <button className="btn btn-primary" onClick={() => onAuthClick('signup')} style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Sign Up</button>
+        <button type="button" className="btn btn-outline" onClick={() => onAuthClick('signin')} style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Sign In</button>
+        <button type="button" className="btn btn-primary" onClick={() => onAuthClick('signup')} style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>Sign Up</button>
       </div>
     </motion.nav>
   );

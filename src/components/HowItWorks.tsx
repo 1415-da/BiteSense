@@ -9,7 +9,7 @@ const HowItWorks: React.FC = () => {
   ];
 
   return (
-    <section id="how-it-works" className="section" style={{ background: 'var(--bg-secondary)' }}>
+    <section id="how-it-works" className="section" style={{ background: 'var(--bg-secondary)', scrollMarginTop: '5rem' }}>
       <div className="container">
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} style={{ textAlign: 'center', marginBottom: '5rem' }}>
           <h2 style={{ fontSize: '2.5rem' }}>How It Works</h2>

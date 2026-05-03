@@ -1,9 +1,13 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Activity, Salad, CheckCircle } from 'lucide-react';
 import previewImage from '../assets/image copy.png';
 
-const Hero: React.FC = () => {
+interface HeroProps {
+  onGetStarted: () => void;
+  onSignIn: () => void;
+}
+
+const Hero: React.FC<HeroProps> = ({ onGetStarted, onSignIn }) => {
   return (
     <section className="section" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
       {/* Background Orbs */}
@@ -24,8 +28,8 @@ const Hero: React.FC = () => {
             Bite Sense scans restaurant menus and recommends the best choices based on your unique profile, dietary restrictions, and health goals.
           </motion.p>
           <motion.div style={{ display: 'flex', gap: '1rem' }}>
-            <button className="btn btn-primary" style={{ padding: '1rem 2rem', fontSize: '1.125rem' }}>Get Started</button>
-            <button className="btn btn-outline" style={{ padding: '1rem 2rem', fontSize: '1.125rem' }}>View Demo</button>
+            <button type="button" className="btn btn-primary" style={{ padding: '1rem 2rem', fontSize: '1.125rem' }} onClick={onGetStarted}>Get Started</button>
+            <button type="button" className="btn btn-outline" style={{ padding: '1rem 2rem', fontSize: '1.125rem' }} onClick={onSignIn}>Sign In</button>
           </motion.div>
         </motion.div>
 
