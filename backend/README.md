@@ -25,7 +25,12 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 - Refresh: `POST /api/v1/auth/refresh` with `{ "refresh_token" }`
 - Logout: `POST /api/v1/auth/logout` with `{ "refresh_token" }`
 - Current user: `GET /api/v1/auth/me` with `Authorization: Bearer <access_token>`
-- Google (ID token): `POST /api/v1/auth/google` with `{ "id_token": "<credential>" }` — requires `VITE_GOOGLE_OAUTH_WEB_CLIENT_ID` in root `.env`
+
+Workspace (all require `Authorization: Bearer <access_token>`):
+
+- `GET/PATCH /api/v1/me/profile`, `POST /api/v1/me/password`, `GET/PUT /api/v1/me/goals`, `GET/PUT /api/v1/me/health`
+- `GET /api/v1/scans/latest`, `GET /api/v1/scans`, `POST /api/v1/scans`, `PATCH /api/v1/scans/{id}` (dishes body)
+- `GET/POST /api/v1/saved-meals`, `DELETE /api/v1/saved-meals/{id}`
 
 SQLite database file `bitesense.db` is created under `backend/` when you use the default `DATABASE_URL`. Set `JWT_SECRET_KEY` in production.
 

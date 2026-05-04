@@ -90,8 +90,7 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
     !skipRefresh &&
     !path.includes('/auth/refresh') &&
     !path.includes('/auth/login') &&
-    !path.includes('/auth/register') &&
-    !path.includes('/auth/google')
+    !path.includes('/auth/register')
   ) {
     const refreshed = await tryRefreshAccessToken();
     if (refreshed) {
@@ -123,16 +122,6 @@ export async function registerRequest(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password, full_name: fullName }),
-  });
-  if (!res.ok) throw new Error(await readApiError(res));
-  return (await res.json()) as TokenResponse;
-}
-
-export async function googleLoginRequest(idToken: string): Promise<TokenResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/auth/google`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id_token: idToken }),
   });
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as TokenResponse;

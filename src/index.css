@@ -126,6 +126,79 @@ button {
   border: 1px solid var(--border);
 }
 
+/* Dashboard: lighter glass so the hero background shows through */
+.dashboard-root .glass {
+  background: rgba(18, 24, 32, 0.38);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 640px) {
+  .dashboard-root .glass {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .dashboard-root header[data-dashboard-header] {
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+  }
+  .dashboard-toast {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .recommendation-card-grid {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+}
+
+@keyframes dashboard-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.92;
+  }
+}
+
+.dashboard-skeleton-pulse {
+  animation: dashboard-skeleton-pulse 1.35s ease-in-out infinite;
+}
+
+@keyframes dashboard-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dashboard-toast-enter {
+  animation: dashboard-toast-in 0.22s ease-out;
+}
+
+/* Keyboard focus — dashboard nav & forms */
+.dashboard-root :focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 3px;
+}
+
+.dashboard-root .btn:focus-visible {
+  outline-offset: 2px;
+}
+
+.dashboard-root input:focus-visible,
+.dashboard-root textarea:focus-visible,
+.dashboard-root select:focus-visible {
+  outline: 2px solid rgba(41, 201, 139, 0.9);
+  outline-offset: 2px;
+}
+
 /* Hide scrollbar for clean UI in certain overflow containers */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
@@ -133,4 +206,14 @@ button {
 .no-scrollbar {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
+}
+
+@media (max-width: 900px) {
+  .recommendation-card-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-skeleton-layout {
+    grid-template-columns: 1fr !important;
+  }
 }

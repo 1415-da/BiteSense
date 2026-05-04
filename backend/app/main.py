@@ -7,6 +7,9 @@ from app.config import settings
 from app.database import Base, engine
 from app.migrate import run_sqlite_migrations
 from app.routers.auth import router as auth_router
+from app.routers.me import router as me_router
+from app.routers.saved_meals import router as saved_meals_router
+from app.routers.scans import router as scans_router
 
 
 @asynccontextmanager
@@ -28,6 +31,9 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(me_router, prefix="/api/v1")
+app.include_router(scans_router, prefix="/api/v1")
+app.include_router(saved_meals_router, prefix="/api/v1")
 
 
 @app.get("/health")

@@ -38,11 +38,5 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS"),
     )
 
-    # Web OAuth client ID is public; shared with Vite via the same env name so one value is defined once.
-    google_client_id: str = Field(
-        default="",
-        validation_alias=AliasChoices("VITE_GOOGLE_OAUTH_WEB_CLIENT_ID"),
-    )
-
 
 settings = Settings()

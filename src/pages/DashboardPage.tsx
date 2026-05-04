@@ -1,23 +1,45 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { History, KeyRound, LogOut, ScanLine, ShieldCheck, Sparkles, Target, Trash2 } from 'lucide-react';
+import { AlertTriangle, Candy, Flame, History, KeyRound, LogOut, ScanLine, ShieldCheck, Sparkles, Target, Trash2, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+import {
+  changePassword,
+  createMenuScan,
+  deleteSavedMeal,
+  createSavedMeal,
+  fetchGoals,
+  fetchHealth,
+  fetchLatestScan,
+  fetchScanHistory,
+  fetchSavedMeals,
+  patchMenuScanDishes,
+  patchProfile,
+  putGoals,
+  putHealth,
+  type GoalsDto,
+  type HealthDto,
+  type MenuScanDto,
+  type MenuScanSummaryDto,
+  type SavedMealDto,
+} from '../api/workspace';
 import { useAuth } from '../auth/AuthContext';
+import dashboardHeroBg from '../assets/dashboard-hero-bg.png';
 import logo from '../assets/logo.png';
+import DashboardSkeleton from './dashboard/DashboardSkeleton';
+import DashboardToast from './dashboard/DashboardToast';
+import HealthPreferencesTab from './dashboard/HealthPreferencesTab';
+import HistoryTab from './dashboard/HistoryTab';
+import MatchScorePill from './dashboard/MatchScorePill';
+import ProfileGoalsTab from './dashboard/ProfileGoalsTab';
+import ProgressRing from './dashboard/ProgressRing';
+import RecommendationsTab from './dashboard/RecommendationsTab';
+import SparklineMini from './dashboard/SparklineMini';
+import { buildRecommendationsFromScan, type ScanRecommendationsPayload } from './dashboard/recommendationModel';
+import SavedMealsTab from './dashboard/SavedMealsTab';
+import { inputStyle, quickMetricStyle } from './dashboard/styles';
+import { DASHBOARD_TABS, type DashboardTab } from './dashboard/types';
 
-const tabs = [
-  'Overview',
-  'Scan Menu',
-  'Recommendations',
-  'History',
-  'Saved Meals',
-  'Profile & Goals',
-  'Health Preferences',
-  'Account & Security',
-] as const;
-
-type DashboardTab = (typeof tabs)[number];
 type ScanInputMode = 'url' | 'image' | 'pdf';
 
 const scanStages = [
@@ -28,32 +50,24 @@ const scanStages = [
   'Personal scoring',
 ];
 
-const sampleSavedMeals = [
-  'Grilled Salmon Bowl',
-  'Tandoori Chicken Salad',
-  'Paneer Tikka Wrap',
-  'Lentil Protein Plate',
-];
-
-const quickMetricStyle: React.CSSProperties = {
-  border: '1px solid var(--border)',
-  background: 'rgba(22, 28, 36, 0.5)',
-  borderRadius: '0.875rem',
-  padding: '0.9rem 1rem',
+const DEFAULT_GOALS: GoalsDto = {
+  primary_goal: 'Weight loss',
+  target_weight_kg: '72',
+  workouts_per_week: 4,
+  protein_g: 120,
+  carbs_g: 180,
+  fat_g: 55,
 };
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.75rem 0.9rem',
-  borderRadius: '0.625rem',
-  border: '1px solid var(--border)',
-  background: 'var(--bg-primary)',
-  color: 'var(--text-primary)',
-  outline: 'none',
+const DEFAULT_HEALTH: HealthDto = {
+  allergens: ['Shellfish'],
+  diets: ['Pescatarian'],
+  max_sodium_mg: 2000,
+  max_sugar_g: 40,
 };
 
 const DashboardPage: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = React.useState<DashboardTab>('Overview');
@@ -70,8 +84,16 @@ const DashboardPage: React.FC = () => {
   const [parsedItems, setParsedItems] = React.useState<string[]>([]);
   const [newItemDraft, setNewItemDraft] = React.useState('');
   const [analysisConfidence, setAnalysisConfidence] = React.useState<number | null>(null);
-  const [lastScanAt, setLastScanAt] = React.useState<string | null>(null);
-  const [saveNotice, setSaveNotice] = React.useState<string | null>(null);
+  const [latestScan, setLatestScan] = React.useState<MenuScanDto | null>(null);
+  const [scanSyncing, setScanSyncing] = React.useState(false);
+  const [toastMessage, setToastMessage] = React.useState<string | null>(null);
+  const dismissToast = React.useCallback(() => setToastMessage(null), []);
+  const [workspaceLoading, setWorkspaceLoading] = React.useState(true);
+  const [goals, setGoals] = React.useState<GoalsDto>(DEFAULT_GOALS);
+  const [health, setHealth] = React.useState<HealthDto>(DEFAULT_HEALTH);
+  const [scanHistory, setScanHistory] = React.useState<MenuScanSummaryDto[]>([]);
+  const [savedMeals, setSavedMeals] = React.useState<SavedMealDto[]>([]);
+  const [workspaceError, setWorkspaceError] = React.useState<string | null>(null);
   const [profileName, setProfileName] = React.useState(user?.full_name ?? '');
   const [profileEmail, setProfileEmail] = React.useState(user?.email ?? '');
   const [currentPassword, setCurrentPassword] = React.useState('');
@@ -79,6 +101,68 @@ const DashboardPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [accountNotice, setAccountNotice] = React.useState<string | null>(null);
   const [accountError, setAccountError] = React.useState<string | null>(null);
+
+  const hydrateFromScan = React.useCallback((scan: MenuScanDto) => {
+    setParsedItems([...scan.dishes]);
+    setRestaurantName(scan.restaurant_name ?? '');
+    setCuisineType(scan.cuisine_type ?? '');
+    setLocation(scan.location ?? '');
+    setMenuUrl(scan.menu_url ?? '');
+    setUploadFileName(scan.upload_filename);
+    const m = scan.input_mode;
+    if (m === 'url' || m === 'image' || m === 'pdf') setInputMode(m);
+    setAnalysisConfidence(scan.confidence);
+    setAnalysisIndex(-1);
+  }, []);
+
+  const loadWorkspace = React.useCallback(async () => {
+    setWorkspaceLoading(true);
+    setWorkspaceError(null);
+    try {
+      const [scan, goalsRes, healthRes, historyRes, mealsRes] = await Promise.all([
+        fetchLatestScan(),
+        fetchGoals(),
+        fetchHealth(),
+        fetchScanHistory(),
+        fetchSavedMeals(),
+      ]);
+      setGoals(goalsRes);
+      setHealth(healthRes);
+      setScanHistory(historyRes);
+      setSavedMeals(mealsRes);
+      if (scan) {
+        setLatestScan(scan);
+        hydrateFromScan(scan);
+      } else {
+        setLatestScan(null);
+      }
+    } catch (e) {
+      setWorkspaceError(e instanceof Error ? e.message : 'Could not load your dashboard data.');
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  }, [hydrateFromScan]);
+
+  const profileCompleteness = React.useMemo(() => {
+    let filled = 0;
+    const slots = 9;
+    if (goals.primary_goal?.trim()) filled += 1;
+    if (goals.target_weight_kg?.trim() && Number(goals.target_weight_kg) > 0) filled += 1;
+    if (typeof goals.workouts_per_week === 'number' && goals.workouts_per_week >= 0) filled += 1;
+    if (goals.protein_g > 0) filled += 1;
+    if (goals.carbs_g > 0) filled += 1;
+    if (goals.fat_g > 0) filled += 1;
+    if (health.max_sodium_mg > 0) filled += 1;
+    if (health.max_sugar_g > 0) filled += 1;
+    if (health.allergens.length > 0 || health.diets.length > 0) filled += 1;
+    return Math.round((filled / slots) * 100);
+  }, [goals, health]);
+
+  const overviewScanConfidence = latestScan?.confidence ?? analysisConfidence;
+
+  React.useEffect(() => {
+    void loadWorkspace();
+  }, [loadWorkspace]);
 
   React.useEffect(() => {
     setProfileName(user?.full_name ?? '');
@@ -92,13 +176,40 @@ const DashboardPage: React.FC = () => {
         if (prev >= scanStages.length - 1) {
           window.clearInterval(timer);
           setIsAnalyzing(false);
-          setAnalysisConfidence(89);
-          setLastScanAt(new Date().toLocaleString());
-          setParsedItems((current) => {
-            if (current.length > 0) return current;
-            return inputMode === 'url'
+          const nextConfidence = 89;
+          setAnalysisConfidence(nextConfidence);
+          const fallback =
+            inputMode === 'url'
               ? ['Grilled Chicken Caesar Salad', 'Margherita Flatbread', 'Tomato Basil Soup']
               : ['Paneer Bowl', 'Steamed Dumplings', 'House Veg Stir Fry'];
+          setParsedItems((current) => {
+            const dishes = current.length > 0 ? current : fallback;
+            queueMicrotask(() => {
+              void (async () => {
+                setScanSyncing(true);
+                setScanError(null);
+                try {
+                  const saved = await createMenuScan({
+                    input_mode: inputMode,
+                    menu_url: inputMode === 'url' ? menuUrl.trim() || null : null,
+                    upload_filename: uploadFileName,
+                    restaurant_name: restaurantName.trim() || null,
+                    cuisine_type: cuisineType.trim() || null,
+                    location: location.trim() || null,
+                    confidence: nextConfidence,
+                    dishes,
+                  });
+                  setLatestScan(saved);
+                  setToastMessage('Menu scan saved.');
+                  setScanHistory(await fetchScanHistory());
+                } catch (e) {
+                  setScanError(e instanceof Error ? e.message : 'Could not save scan to the server.');
+                } finally {
+                  setScanSyncing(false);
+                }
+              })();
+            });
+            return dishes;
           });
           return prev;
         }
@@ -107,26 +218,37 @@ const DashboardPage: React.FC = () => {
     }, 700);
 
     return () => window.clearInterval(timer);
-  }, [isAnalyzing, inputMode]);
+  }, [isAnalyzing, inputMode, menuUrl, uploadFileName, restaurantName, cuisineType, location]);
 
   const recentScanSummary = React.useMemo(() => {
-    if (!lastScanAt) {
+    if (!latestScan) {
       return {
         restaurant: 'No scan yet',
         analyzedCount: 0,
-        topPicks: ['-'],
+        topPicks: ['-'] as string[],
       };
     }
     return {
-      restaurant: restaurantName || 'Restaurant scan',
+      restaurant: restaurantName.trim() || latestScan.restaurant_name?.trim() || 'Restaurant scan',
       analyzedCount: parsedItems.length,
-      topPicks: parsedItems.slice(0, 3),
+      topPicks: parsedItems.length > 0 ? parsedItems.slice(0, 3) : ['-'],
     };
-  }, [lastScanAt, restaurantName, parsedItems]);
+  }, [latestScan, restaurantName, parsedItems]);
+
+  const scanRecommendations = React.useMemo((): ScanRecommendationsPayload | null => {
+    if (!latestScan || parsedItems.length === 0) return null;
+    const lastAt = new Date(latestScan.scanned_at).toLocaleString();
+    const locationLabel = [cuisineType.trim(), location.trim()].filter(Boolean).join(' · ') || 'Any location';
+    return buildRecommendationsFromScan(parsedItems, {
+      restaurantLabel: restaurantName.trim() || latestScan.restaurant_name?.trim() || 'Menu scan',
+      location: locationLabel,
+      lastScanAt: lastAt,
+      confidence: analysisConfidence ?? latestScan.confidence,
+    });
+  }, [latestScan, parsedItems, restaurantName, cuisineType, location, analysisConfidence]);
 
   const handleAnalyze = () => {
     setScanError(null);
-    setSaveNotice(null);
 
     if (inputMode === 'url' && !menuUrl.trim()) {
       setScanError('Please paste a menu URL before analyzing.');
@@ -139,6 +261,7 @@ const DashboardPage: React.FC = () => {
 
     setParsedItems([]);
     setAnalysisConfidence(null);
+    setLatestScan(null);
     setAnalysisIndex(0);
     setIsAnalyzing(true);
   };
@@ -152,18 +275,23 @@ const DashboardPage: React.FC = () => {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
         <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Target size={18} color="var(--accent-primary)" />
-            <h3 style={{ fontSize: '1.05rem' }}>Profile Status</h3>
-          </div>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.75rem' }}>
-            Goal: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Weight Loss</span> · Restrictions:{' '}
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Low Sodium, Diabetic-friendly</span>
-          </p>
-          <div style={{ ...quickMetricStyle }}>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              Profile completeness: <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>82%</span>
-            </p>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <Target size={18} color="var(--accent-primary)" />
+                <h3 style={{ fontSize: '1.05rem' }}>Profile Status</h3>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.75rem' }}>
+                Goal: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{goals.primary_goal}</span> · Allergens:{' '}
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{health.allergens.length ? health.allergens.join(', ') : 'None set'}</span>
+                {' · '}
+                Diets: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{health.diets.length ? health.diets.join(', ') : 'None set'}</span>
+              </p>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                Macro fit vs. targets updates when dish-level nutrition is connected—placeholders below mirror your goals & guardrails.
+              </p>
+            </div>
+            <ProgressRing value={profileCompleteness} size={80} stroke={5} caption="Completeness" />
           </div>
         </div>
 
@@ -186,34 +314,86 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
-        <div style={quickMetricStyle}><p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Calories fit: <b style={{ color: 'var(--text-primary)' }}>Good</b></p></div>
-        <div style={quickMetricStyle}><p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Protein fit: <b style={{ color: 'var(--text-primary)' }}>On track</b></p></div>
-        <div style={quickMetricStyle}><p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Sodium risk: <b style={{ color: '#f6c760' }}>Moderate</b></p></div>
-        <div style={quickMetricStyle}><p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Sugar risk: <b style={{ color: 'var(--accent-primary)' }}>Low</b></p></div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(158px, 1fr))',
+          gap: '0.75rem',
+          marginBottom: '1rem',
+        }}
+      >
+        <div style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Calories fit</p>
+            <MatchScorePill icon={Flame} variant="accent">
+              Good
+            </MatchScorePill>
+          </div>
+          <SparklineMini trend="up" />
+        </div>
+        <div style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Protein fit</p>
+            <MatchScorePill icon={Zap} variant="accent">
+              On track
+            </MatchScorePill>
+          </div>
+          <SparklineMini trend="up" />
+        </div>
+        <div style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sodium risk</p>
+            <MatchScorePill icon={AlertTriangle} variant="warn">
+              Moderate
+            </MatchScorePill>
+          </div>
+          <SparklineMini trend="warn" />
+        </div>
+        <div style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sugar risk</p>
+            <MatchScorePill icon={Candy} variant="accent">
+              Low
+            </MatchScorePill>
+          </div>
+          <SparklineMini trend="flat" />
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1rem' }}>
         <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.8rem' }}>
-            <History size={18} color="var(--accent-primary)" />
-            <h3 style={{ fontSize: '1.05rem' }}>Recent Scan Summary</h3>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.8rem' }}>
+                <History size={18} color="var(--accent-primary)" />
+                <h3 style={{ fontSize: '1.05rem' }}>Recent Scan Summary</h3>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '0.35rem', fontSize: '0.9rem' }}>
+                Restaurant: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{recentScanSummary.restaurant}</span>
+              </p>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '0.35rem', fontSize: '0.9rem' }}>
+                Last scan:{' '}
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                  {latestScan ? new Date(latestScan.scanned_at).toLocaleString() : 'Not available yet'}
+                </span>
+              </p>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '0.6rem', fontSize: '0.9rem' }}>
+                Items analyzed: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{recentScanSummary.analyzedCount}</span>
+              </p>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Top picks:</p>
+              <ul style={{ margin: 0, paddingLeft: '1.1rem', color: 'var(--text-secondary)' }}>
+                {recentScanSummary.topPicks.map((item) => (
+                  <li key={item} style={{ marginBottom: '0.25rem' }}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <ProgressRing
+              value={overviewScanConfidence}
+              size={80}
+              stroke={5}
+              caption={latestScan ? 'Scan confidence' : 'No scan yet'}
+            />
           </div>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '0.35rem', fontSize: '0.9rem' }}>
-            Restaurant: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{recentScanSummary.restaurant}</span>
-          </p>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '0.35rem', fontSize: '0.9rem' }}>
-            Last scan: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{lastScanAt ?? 'Not available yet'}</span>
-          </p>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '0.6rem', fontSize: '0.9rem' }}>
-            Items analyzed: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{recentScanSummary.analyzedCount}</span>
-          </p>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Top picks:</p>
-          <ul style={{ margin: 0, paddingLeft: '1.1rem', color: 'var(--text-secondary)' }}>
-            {recentScanSummary.topPicks.map((item) => (
-              <li key={item} style={{ marginBottom: '0.25rem' }}>{item}</li>
-            ))}
-          </ul>
         </div>
 
         <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
@@ -222,8 +402,9 @@ const DashboardPage: React.FC = () => {
             <h3 style={{ fontSize: '1.05rem' }}>Saved Meals</h3>
           </div>
           <ul style={{ margin: 0, paddingLeft: '1.1rem', color: 'var(--text-secondary)' }}>
-            {sampleSavedMeals.map((item) => (
-              <li key={item} style={{ marginBottom: '0.35rem' }}>{item}</li>
+            {savedMeals.length === 0 && <li style={{ marginBottom: '0.35rem' }}>No saved meals yet</li>}
+            {savedMeals.slice(0, 6).map((item) => (
+              <li key={item.id} style={{ marginBottom: '0.35rem' }}>{item.dish_name}</li>
             ))}
           </ul>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.9rem' }}>
@@ -340,6 +521,7 @@ const DashboardPage: React.FC = () => {
               setAnalysisIndex(-1);
               setIsAnalyzing(false);
               setAnalysisConfidence(null);
+              setLatestScan(null);
               setScanError(null);
             }}
           >
@@ -348,28 +530,30 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="glass" style={{ borderRadius: '1rem', padding: '1rem', marginBottom: '1rem' }}>
-        <h3 style={{ fontSize: '1.05rem', marginBottom: '0.75rem' }}>Processing Status</h3>
-        <div style={{ display: 'grid', gap: '0.5rem' }}>
-          {scanStages.map((stage, idx) => {
-            const done = analysisIndex > idx;
-            const current = analysisIndex === idx;
-            return (
-              <div key={stage} style={{ ...quickMetricStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{stage}</span>
-                <span style={{ color: done ? 'var(--accent-primary)' : current ? '#f6c760' : 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
-                  {done ? 'Done' : current ? 'Running' : 'Pending'}
-                </span>
-              </div>
-            );
-          })}
+      {(isAnalyzing || analysisIndex >= 0) && (
+        <div className="glass" style={{ borderRadius: '1rem', padding: '1rem', marginBottom: '1rem' }}>
+          <h3 style={{ fontSize: '1.05rem', marginBottom: '0.75rem' }}>Processing status</h3>
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            {scanStages.map((stage, idx) => {
+              const done = analysisIndex > idx;
+              const current = analysisIndex === idx;
+              return (
+                <div key={stage} style={{ ...quickMetricStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{stage}</span>
+                  <span style={{ color: done ? 'var(--accent-primary)' : current ? '#f6c760' : 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                    {done ? 'Done' : current ? 'Running' : 'Pending'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {analysisConfidence !== null && (
+            <p style={{ marginTop: '0.75rem', marginBottom: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Parsing confidence: <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>{analysisConfidence}%</span>
+            </p>
+          )}
         </div>
-        {analysisConfidence !== null && (
-          <p style={{ marginTop: '0.75rem', marginBottom: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            Parsing confidence: <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>{analysisConfidence}%</span>
-          </p>
-        )}
-      </div>
+      )}
 
       {parsedItems.length > 0 && (
         <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
@@ -422,24 +606,37 @@ const DashboardPage: React.FC = () => {
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.6rem' }}>
-            <button type="button" className="btn btn-primary" onClick={() => setActiveTab('Recommendations')}>
-              View Recommendations
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={scanSyncing || !latestScan}
+              onClick={() => setActiveTab('Recommendations')}
+            >
+              {scanSyncing ? 'Syncing scan…' : 'View recommendations'}
             </button>
             <button
               type="button"
               className="btn btn-outline"
+              disabled={!latestScan || parsedItems.length === 0}
               onClick={() => {
-                setSaveNotice('Scan saved to your history.');
-                setActiveTab('Overview');
+                void (async () => {
+                  if (!latestScan) return;
+                  try {
+                    const updated = await patchMenuScanDishes(latestScan.id, parsedItems);
+                    setLatestScan(updated);
+                    setScanHistory(await fetchScanHistory());
+                    setToastMessage('Scan dishes updated.');
+                    setActiveTab('Overview');
+                  } catch (e) {
+                    setScanError(e instanceof Error ? e.message : 'Could not update scan.');
+                  }
+                })();
               }}
             >
-              Save Scan
+              Save scan
             </button>
           </div>
-          {saveNotice && (
-            <p style={{ marginTop: '0.75rem', marginBottom: 0, fontSize: '0.85rem', color: 'var(--accent-primary)' }}>{saveNotice}</p>
-          )}
         </div>
       )}
     </>
@@ -481,13 +678,23 @@ const DashboardPage: React.FC = () => {
             className="btn btn-primary"
             style={{ marginTop: '0.9rem' }}
             onClick={() => {
-              setAccountError(null);
-              if (!profileName.trim() || !profileEmail.trim()) {
-                setAccountError('Name and email are required.');
-                setAccountNotice(null);
-                return;
-              }
-              setAccountNotice('Profile details updated (UI only).');
+              void (async () => {
+                setAccountError(null);
+                if (!profileName.trim() || !profileEmail.trim()) {
+                  setAccountError('Name and email are required.');
+                  setAccountNotice(null);
+                  return;
+                }
+                try {
+                  await patchProfile({ full_name: profileName.trim(), email: profileEmail.trim() });
+                  await refreshUser();
+                  setAccountNotice(null);
+                  setToastMessage('Profile updated.');
+                } catch (e) {
+                  setAccountError(e instanceof Error ? e.message : 'Could not update profile.');
+                  setAccountNotice(null);
+                }
+              })();
             }}
           >
             Save profile
@@ -507,7 +714,7 @@ const DashboardPage: React.FC = () => {
             </div>
             <div style={quickMetricStyle}>
               <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                Sign-in method: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Email / Google</span>
+                Sign-in method: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Email & password</span>
               </p>
             </div>
             <div style={quickMetricStyle}>
@@ -565,26 +772,35 @@ const DashboardPage: React.FC = () => {
             className="btn btn-primary"
             style={{ marginTop: '0.9rem' }}
             onClick={() => {
-              setAccountError(null);
-              if (!currentPassword || !newPassword || !confirmPassword) {
-                setAccountError('Please fill in all password fields.');
-                setAccountNotice(null);
-                return;
-              }
-              if (newPassword.length < 8) {
-                setAccountError('New password must be at least 8 characters.');
-                setAccountNotice(null);
-                return;
-              }
-              if (newPassword !== confirmPassword) {
-                setAccountError('New password and confirmation do not match.');
-                setAccountNotice(null);
-                return;
-              }
-              setCurrentPassword('');
-              setNewPassword('');
-              setConfirmPassword('');
-              setAccountNotice('Password changed successfully (UI only).');
+              void (async () => {
+                setAccountError(null);
+                if (!currentPassword || !newPassword || !confirmPassword) {
+                  setAccountError('Please fill in all password fields.');
+                  setAccountNotice(null);
+                  return;
+                }
+                if (newPassword.length < 8) {
+                  setAccountError('New password must be at least 8 characters.');
+                  setAccountNotice(null);
+                  return;
+                }
+                if (newPassword !== confirmPassword) {
+                  setAccountError('New password and confirmation do not match.');
+                  setAccountNotice(null);
+                  return;
+                }
+                try {
+                  await changePassword({ current_password: currentPassword, new_password: newPassword });
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmPassword('');
+                  setAccountNotice(null);
+                  setToastMessage('Password changed.');
+                } catch (e) {
+                  setAccountError(e instanceof Error ? e.message : 'Could not change password.');
+                  setAccountNotice(null);
+                }
+              })();
             }}
           >
             Update password
@@ -629,21 +845,36 @@ const DashboardPage: React.FC = () => {
   );
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(180deg, var(--bg-primary), var(--bg-secondary))',
-        color: 'var(--text-primary)',
-      }}
-    >
+    <div style={{ minHeight: '100vh', position: 'relative', overflowX: 'hidden', color: 'var(--text-primary)' }}>
+      <div
+        aria-hidden
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: 'none',
+          backgroundColor: '#0B0F14',
+          backgroundImage: `radial-gradient(ellipse 100% 75% at 70% 30%, rgba(41, 201, 139, 0.32) 0%, transparent 58%),
+            linear-gradient(180deg, rgba(11, 15, 20, 0.48) 0%, rgba(11, 15, 20, 0.28) 48%, rgba(11, 15, 20, 0.52) 100%),
+            linear-gradient(102deg, rgba(11, 15, 20, 0.42) 0%, rgba(11, 15, 20, 0.14) 50%, rgba(11, 15, 20, 0.48) 100%),
+            url(${dashboardHeroBg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          backgroundAttachment: 'fixed',
+        }}
+      />
+      <div className="dashboard-root" style={{ position: 'relative', zIndex: 1 }}>
       <header
+        data-dashboard-header
         style={{
           position: 'sticky',
           top: 0,
           zIndex: 20,
           borderBottom: '1px solid var(--border)',
-          background: 'rgba(11, 15, 20, 0.85)',
-          backdropFilter: 'blur(12px)',
+          background: 'rgba(11, 15, 20, 0.48)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
         }}
       >
         <div
@@ -679,6 +910,17 @@ const DashboardPage: React.FC = () => {
         </div>
       </header>
 
+      {workspaceError && (
+        <div className="container" style={{ padding: '0.75rem 2rem 0', maxWidth: '1440px', margin: '0 auto' }}>
+          <div className="glass" style={{ borderRadius: '0.75rem', padding: '0.85rem 1rem', borderColor: 'var(--accent-danger)', color: 'var(--accent-danger)', fontSize: '0.9rem' }}>
+            {workspaceError}
+          </div>
+        </div>
+      )}
+
+      {workspaceLoading ? (
+        <DashboardSkeleton />
+      ) : (
       <div
         style={{
           width: '100%',
@@ -695,7 +937,7 @@ const DashboardPage: React.FC = () => {
             Dashboard
           </p>
           <nav style={{ display: 'grid', gap: '0.625rem' }}>
-            {tabs.map((tab) => {
+            {DASHBOARD_TABS.map((tab) => {
               const active = tab === activeTab;
               return (
                 <button
@@ -723,35 +965,55 @@ const DashboardPage: React.FC = () => {
 
         <motion.main
           key={activeTab}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
           className="glass"
           style={{ borderRadius: '1rem', minHeight: '620px', padding: '2rem' }}
         >
           {activeTab === 'Overview' && renderOverview()}
           {activeTab === 'Scan Menu' && renderScanMenu()}
-          {activeTab === 'Account & Security' && renderAccountSecurity()}
-          {activeTab !== 'Overview' && activeTab !== 'Scan Menu' && activeTab !== 'Account & Security' && (
-            <>
-              <h1 style={{ fontSize: '2.1rem', marginBottom: '0.75rem' }}>{activeTab}</h1>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', fontSize: '1rem' }}>
-                This section is ready for implementation.
-              </p>
-              <div
-                style={{
-                  border: '1px dashed var(--border)',
-                  borderRadius: '1rem',
-                  padding: '1.5rem',
-                  background: 'rgba(22, 28, 36, 0.45)',
-                }}
-              >
-                <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '1rem' }}>
-                  You are currently viewing <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{activeTab}</span>.
-                </p>
-              </div>
-            </>
+          {activeTab === 'Recommendations' && <RecommendationsTab onNavigate={setActiveTab} scanRecommendations={scanRecommendations} />}
+          {activeTab === 'History' && <HistoryTab onNavigate={setActiveTab} scans={scanHistory} />}
+          {activeTab === 'Saved Meals' && (
+            <SavedMealsTab
+              onNavigate={setActiveTab}
+              meals={savedMeals}
+              onAdd={async (body) => {
+                const row = await createSavedMeal(body);
+                setSavedMeals((prev) => [row, ...prev]);
+              }}
+              onRemove={async (id) => {
+                await deleteSavedMeal(id);
+                setSavedMeals((prev) => prev.filter((m) => m.id !== id));
+              }}
+            />
           )}
+          {activeTab === 'Profile & Goals' && (
+            <ProfileGoalsTab
+              goals={goals}
+              onSave={async (g) => {
+                const next = await putGoals(g);
+                setGoals(next);
+                setToastMessage('Goals saved.');
+              }}
+            />
+          )}
+          {activeTab === 'Health Preferences' && (
+            <HealthPreferencesTab
+              health={health}
+              onSave={async (h) => {
+                const next = await putHealth(h);
+                setHealth(next);
+                setToastMessage('Health preferences saved.');
+              }}
+            />
+          )}
+          {activeTab === 'Account & Security' && renderAccountSecurity()}
         </motion.main>
+      </div>
+      )}
+      <DashboardToast message={toastMessage} onDismiss={dismissToast} />
       </div>
     </div>
   );

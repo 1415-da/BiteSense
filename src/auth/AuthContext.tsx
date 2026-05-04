@@ -5,7 +5,6 @@ import {
   clearStoredTokens,
   fetchMe,
   getStoredTokens,
-  googleLoginRequest,
   loginRequest,
   logoutRequest,
   registerRequest,
@@ -17,16 +16,13 @@ import type { AuthUser } from './types';
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  googleClientId: string;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
+  refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-const googleClientId = import.meta.env.VITE_GOOGLE_OAUTH_WEB_CLIENT_ID ?? '';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -83,9 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(me);
   }, []);
 
-  const loginWithGoogle = useCallback(async (idToken: string) => {
-    const tokens = await googleLoginRequest(idToken);
-    setStoredTokens(tokens.access_token, tokens.refresh_token);
+  const refreshUser = useCallback(async () => {
     const me = await fetchMe();
     setUser(me);
   }, []);
@@ -100,13 +94,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       loading,
-      googleClientId,
       login,
       register,
-      loginWithGoogle,
+      refreshUser,
       logout,
     }),
-    [user, loading, login, register, loginWithGoogle, logout]
+    [user, loading, login, register, refreshUser, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

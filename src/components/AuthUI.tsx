@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { GoogleLogin } from '@react-oauth/google';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +11,7 @@ interface AuthUIProps {
 }
 
 const AuthUI: React.FC<AuthUIProps> = ({ initialView, onClose }) => {
-  const { login, register, loginWithGoogle, googleClientId } = useAuth();
+  const { login, register } = useAuth();
   const navigate = useNavigate();
   const [view, setView] = useState<'signin' | 'signup'>(initialView);
   const [fullName, setFullName] = useState('');
@@ -114,40 +113,6 @@ const AuthUI: React.FC<AuthUIProps> = ({ initialView, onClose }) => {
               {submitting ? 'Please wait…' : view === 'signin' ? 'Sign In' : 'Sign Up'}
             </button>
           </form>
-
-          <div style={{ marginTop: '1rem', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-            {googleClientId ? (
-              <GoogleLogin
-                onSuccess={async (cred) => {
-                  if (!cred.credential) return;
-                  setFormError(null);
-                  setSubmitting(true);
-                  try {
-                    await loginWithGoogle(cred.credential);
-                    onClose();
-                    navigate('/dashboard');
-                  } catch (err) {
-                    setFormError(err instanceof Error ? err.message : 'Google sign-in failed.');
-                  } finally {
-                    setSubmitting(false);
-                  }
-                }}
-                onError={() => {
-                  setFormError('Google sign-in was cancelled or failed.');
-                }}
-                theme="filled_black"
-                size="large"
-                text="continue_with"
-                width="100%"
-                useOneTap={false}
-              />
-            ) : (
-              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>
-                Set <code style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>VITE_GOOGLE_OAUTH_WEB_CLIENT_ID</code> in the root{' '}
-                <code style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>.env</code> (same Web client ID for frontend and API verification).
-              </p>
-            )}
-          </div>
 
           <p style={{ textAlign: 'center', marginTop: '2rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
             {view === 'signin' ? "Don't have an account? " : "Already have an account? "}
