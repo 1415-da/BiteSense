@@ -147,7 +147,7 @@ button {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
   }
-  .recommendation-card-grid {
+  .recommendation-card {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
   }
@@ -208,12 +208,21 @@ button {
   scrollbar-width: none;  /* Firefox */
 }
 
-@media (max-width: 900px) {
-  .recommendation-card-grid {
-    grid-template-columns: 1fr !important;
-  }
+.recommendations-matches-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
 
+@media (max-width: 900px) {
   .dashboard-skeleton-layout {
     grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .recommendations-matches-grid {
+    grid-template-columns: 1fr;
   }
 }

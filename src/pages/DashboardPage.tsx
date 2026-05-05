@@ -973,7 +973,9 @@ const DashboardPage: React.FC = () => {
         >
           {activeTab === 'Overview' && renderOverview()}
           {activeTab === 'Scan Menu' && renderScanMenu()}
-          {activeTab === 'Recommendations' && <RecommendationsTab onNavigate={setActiveTab} scanRecommendations={scanRecommendations} />}
+          {activeTab === 'Recommendations' && (
+            <RecommendationsTab onNavigate={setActiveTab} scanRecommendations={scanRecommendations} goals={goals} health={health} />
+          )}
           {activeTab === 'History' && <HistoryTab onNavigate={setActiveTab} scans={scanHistory} />}
           {activeTab === 'Saved Meals' && (
             <SavedMealsTab

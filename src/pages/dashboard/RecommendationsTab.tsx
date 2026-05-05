@@ -1,29 +1,164 @@
-import React, { useMemo, useState } from 'react';
-import { Filter, ScanLine, Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Filter, ScanLine, ShieldAlert, Target } from 'lucide-react';
 
+import type { GoalsDto, HealthDto } from '../../api/workspace';
 import type { DashboardTab } from './types';
 import DashboardTabShell from './DashboardTabShell';
 import RecommendationCard from './RecommendationCard';
 import type { ScanRecommendationsPayload } from './recommendationModel';
-import { inputStyle, quickMetricStyle } from './styles';
+import { inputStyle } from './styles';
+
+const TOP_MATCH_LIMIT = 6;
+
+const inputCompact = {
+  ...inputStyle,
+  padding: '0.5rem 0.65rem',
+  fontSize: '0.875rem',
+  marginBottom: '0.5rem',
+} as const;
 
 interface RecommendationsTabProps {
   onNavigate: (tab: DashboardTab) => void;
   scanRecommendations: ScanRecommendationsPayload | null;
+  goals: GoalsDto;
+  health: HealthDto;
 }
 
-const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, scanRecommendations }) => {
-  const [query, setQuery] = useState('');
-  const [minScore, setMinScore] = useState(70);
+const GoalsGuardrailsSnapshot: React.FC<{ goals: GoalsDto; health: HealthDto }> = ({ goals, health }) => (
+  <div
+    className="glass"
+    style={{
+      borderRadius: '0.75rem',
+      padding: '0.6rem 0.75rem',
+      flex: '1 1 260px',
+      minWidth: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.45rem',
+    }}
+  >
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+      <Target size={15} color="var(--accent-primary)" strokeWidth={2.25} />
+      <h3 style={{ fontSize: '0.82rem', margin: 0, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        Goals & guardrails
+      </h3>
+    </div>
+    <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+      <span style={{ color: 'var(--text-muted)' }}>Goal</span>{' '}
+      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{goals.primary_goal}</span>
+      {' · '}
+      <span style={{ color: 'var(--text-muted)' }}>Weight</span>{' '}
+      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{goals.target_weight_kg} kg</span>
+      {' · '}
+      <span style={{ color: 'var(--text-muted)' }}>Activity</span>{' '}
+      <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{goals.workouts_per_week}/wk</span>
+    </p>
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '0.35rem',
+        fontSize: '0.72rem',
+        color: 'var(--text-secondary)',
+      }}
+    >
+      <span style={{ padding: '0.25rem 0.45rem', borderRadius: '0.45rem', border: '1px solid rgba(41, 201, 139, 0.45)', background: 'rgba(41, 201, 139, 0.1)' }}>
+        P {goals.protein_g}g
+      </span>
+      <span style={{ padding: '0.25rem 0.45rem', borderRadius: '0.45rem', border: '1px solid var(--border)', background: 'rgba(22, 28, 36, 0.45)' }}>
+        C {goals.carbs_g}g
+      </span>
+      <span style={{ padding: '0.25rem 0.45rem', borderRadius: '0.45rem', border: '1px solid var(--border)', background: 'rgba(22, 28, 36, 0.45)' }}>
+        F {goals.fat_g}g
+      </span>
+      <span style={{ padding: '0.25rem 0.45rem', borderRadius: '0.45rem', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(22, 28, 36, 0.35)' }}>
+        Na ≤{health.max_sodium_mg} mg
+      </span>
+      <span style={{ padding: '0.25rem 0.45rem', borderRadius: '0.45rem', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(22, 28, 36, 0.35)' }}>
+        Sugar ≤{health.max_sugar_g} g
+      </span>
+    </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
+      <ShieldAlert size={12} color="var(--accent-danger)" />
+      <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        Allergens
+      </span>
+      {health.allergens.length === 0 ? (
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>None set</span>
+      ) : (
+        health.allergens.map((a) => (
+          <span
+            key={a}
+            style={{
+              padding: '0.18rem 0.45rem',
+              borderRadius: '999px',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              border: '1px solid rgba(232, 124, 110, 0.55)',
+              background: 'rgba(232, 124, 110, 0.12)',
+              color: 'var(--accent-danger)',
+            }}
+          >
+            {a}
+          </span>
+        ))
+      )}
+    </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Diets</span>
+      {health.diets.length === 0 ? (
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>None set</span>
+      ) : (
+        health.diets.map((d) => (
+          <span
+            key={d}
+            style={{
+              padding: '0.18rem 0.45rem',
+              borderRadius: '999px',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              border: '1px solid rgba(41, 201, 139, 0.5)',
+              background: 'rgba(41, 201, 139, 0.12)',
+              color: 'var(--accent-primary)',
+            }}
+          >
+            {d}
+          </span>
+        ))
+      )}
+    </div>
+  </div>
+);
+
+const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, scanRecommendations, goals, health }) => {
+  const [queryDraft, setQueryDraft] = useState('');
+  const [minScoreDraft, setMinScoreDraft] = useState(70);
+  const [queryApplied, setQueryApplied] = useState('');
+  const [minScoreApplied, setMinScoreApplied] = useState(70);
+
+  useEffect(() => {
+    if (!scanRecommendations) return;
+    setQueryDraft('');
+    setQueryApplied('');
+    setMinScoreDraft(70);
+    setMinScoreApplied(70);
+  }, [scanRecommendations?.lastScanAt]);
 
   const filtered = useMemo(() => {
     if (!scanRecommendations) return [];
     return scanRecommendations.rows.filter((r) => {
-      const q = query.trim().toLowerCase();
+      const q = queryApplied.trim().toLowerCase();
       const matchesQuery = !q || r.dishName.toLowerCase().includes(q);
-      return matchesQuery && r.score >= minScore;
+      return matchesQuery && r.score >= minScoreApplied;
     });
-  }, [scanRecommendations, query, minScore]);
+  }, [scanRecommendations, queryApplied, minScoreApplied]);
+
+  const gridRows = useMemo(() => filtered.slice(0, TOP_MATCH_LIMIT), [filtered]);
+
+  const handleApply = () => {
+    setQueryApplied(queryDraft.trim());
+    setMinScoreApplied(minScoreDraft);
+  };
 
   if (!scanRecommendations || scanRecommendations.rows.length === 0) {
     return (
@@ -77,57 +212,87 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, sca
 
   return (
     <DashboardTabShell title="Recommendations" subtitle={subtitle}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
-        <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Filter size={18} color="var(--accent-primary)" />
-            <h3 style={{ fontSize: '1.05rem' }}>Filters</h3>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          marginBottom: '0.85rem',
+          alignItems: 'stretch',
+        }}
+      >
+        <div
+          className="glass"
+          style={{
+            borderRadius: '0.75rem',
+            padding: '0.6rem 0.75rem',
+            flex: '1 1 280px',
+            maxWidth: '520px',
+            minWidth: '240px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.45rem' }}>
+            <Filter size={15} color="var(--accent-primary)" strokeWidth={2.25} />
+            <h3 style={{ fontSize: '0.82rem', margin: 0, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+              Filters
+            </h3>
           </div>
-          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Search dishes</label>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. salmon, salad…" style={{ ...inputStyle, marginBottom: '1rem' }} />
-          <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Minimum match score: {minScore}</label>
-          <input type="range" min={60} max={100} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} style={{ width: '100%' }} />
+          <label style={{ display: 'block', marginBottom: '0.2rem', fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Search dishes
+          </label>
+          <input
+            value={queryDraft}
+            onChange={(e) => setQueryDraft(e.target.value)}
+            placeholder="e.g. salmon, salad…"
+            style={{ ...inputCompact }}
+          />
+          <label style={{ display: 'block', marginBottom: '0.2rem', fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Min score · {minScoreDraft}
+          </label>
+          <input
+            type="range"
+            min={60}
+            max={100}
+            value={minScoreDraft}
+            onChange={(e) => setMinScoreDraft(Number(e.target.value))}
+            style={{ width: '100%', marginBottom: '0.5rem', height: '6px', accentColor: 'var(--accent-primary)' }}
+          />
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.45rem' }}>
+            <button type="button" className="btn btn-primary" style={{ padding: '0.45rem 0.85rem', fontSize: '0.82rem' }} onClick={handleApply}>
+              Apply filters
+            </button>
+            <button type="button" className="btn btn-outline" style={{ padding: '0.45rem 0.85rem', fontSize: '0.82rem' }} onClick={() => onNavigate('Scan Menu')}>
+              New scan
+            </button>
+          </div>
         </div>
-        <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Sparkles size={18} color="var(--accent-primary)" />
-            <h3 style={{ fontSize: '1.05rem' }}>Scan summary</h3>
-          </div>
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
-            <div style={quickMetricStyle}>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Showing <b style={{ color: 'var(--text-primary)' }}>{filtered.length}</b> of {scanRecommendations.rows.length} ranked dishes
-              </p>
-            </div>
-            <div style={quickMetricStyle}>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Last processed: <b style={{ color: 'var(--text-primary)' }}>{scanRecommendations.lastScanAt}</b>
-              </p>
-            </div>
-            {scanRecommendations.confidence != null && (
-              <div style={quickMetricStyle}>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Parse confidence: <b style={{ color: 'var(--accent-primary)' }}>{scanRecommendations.confidence}%</b>
-                </p>
-              </div>
-            )}
-          </div>
-          <button type="button" className="btn btn-outline" style={{ marginTop: '0.85rem', width: '100%' }} onClick={() => onNavigate('Scan Menu')}>
-            New scan
-          </button>
-        </div>
+        <GoalsGuardrailsSnapshot goals={goals} health={health} />
       </div>
 
-      <div style={{ display: 'grid', gap: '1.25rem' }}>
-        {filtered.map((row) => (
+      {gridRows.length > 0 && (
+        <h2
+          style={{
+            margin: '0 0 0.65rem',
+            fontSize: '1.05rem',
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            color: 'var(--text-primary)',
+          }}
+        >
+          Top Matches
+        </h2>
+      )}
+
+      <div className="recommendations-matches-grid">
+        {gridRows.map((row) => (
           <RecommendationCard key={row.id} data={row} isTopMatch={row.rank === 1} />
         ))}
-        {filtered.length === 0 && (
-          <div className="glass" style={{ borderRadius: '1rem', padding: '1.25rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-            No dishes match your filters. Try lowering the minimum score or clearing search.
-          </div>
-        )}
       </div>
+      {filtered.length === 0 && (
+        <div className="glass" style={{ borderRadius: '1rem', padding: '1.25rem', textAlign: 'center', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+          No dishes match your filters. Try lowering the minimum score or clearing search, then Apply.
+        </div>
+      )}
     </DashboardTabShell>
   );
 };
