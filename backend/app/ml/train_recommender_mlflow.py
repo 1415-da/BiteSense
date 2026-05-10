@@ -16,6 +16,8 @@ Run inside Compose (tracking server service `mlflow`):
 From the host (default UI http://localhost:5050 — see MLFLOW_HOST_PORT in docker-compose):
 
   cd backend && MLFLOW_TRACKING_URI=http://127.0.0.1:5050 PYTHONPATH=. python -m app.ml.train_recommender_mlflow
+
+Export ensemble for live API blending (see README): set ``BITESENSE_ML_EXPORT_PATH`` e.g. ``models/ensemble.joblib``.
 """
 
 from __future__ import annotations
@@ -192,6 +194,15 @@ def run_training(
         me = _metrics(y_test, pred_e)
         _log_model_metrics("ensemble", me)
         mlflow.sklearn.log_model(ensemble, artifact_path="ensemble_model")
+
+        export_path = (os.environ.get("BITESENSE_ML_EXPORT_PATH") or "").strip()
+        if export_path:
+            import joblib
+            from pathlib import Path
+
+            dest = Path(export_path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            joblib.dump(ensemble, dest, compress=3)
 
         return {
             "tracking_uri": tracking_uri,

@@ -21,6 +21,14 @@ def get_current_user(
     payload = decode_access_token(creds.credentials)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    jti = payload.get("jti")
+    if jti:
+        from app.redis_auth import is_access_jti_denied
+        from app.redis_client import get_redis
+
+        rx = get_redis()
+        if rx is not None and is_access_jti_denied(rx, str(jti)):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session ended")
     try:
         user_id = int(payload["sub"])
     except (KeyError, ValueError):
@@ -51,6 +59,14 @@ def verify_ml_metrics_access(
     payload = decode_access_token(creds.credentials)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    jti = payload.get("jti")
+    if jti:
+        from app.redis_auth import is_access_jti_denied
+        from app.redis_client import get_redis
+
+        rx = get_redis()
+        if rx is not None and is_access_jti_denied(rx, str(jti)):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session ended")
     try:
         user_id = int(payload["sub"])
     except (KeyError, ValueError):

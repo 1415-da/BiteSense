@@ -136,9 +136,13 @@ export async function fetchMe(): Promise<AuthUser> {
 export async function logoutRequest(): Promise<void> {
   const refresh = localStorage.getItem(REFRESH_KEY);
   if (!refresh) return;
+  const access = localStorage.getItem(ACCESS_KEY);
   await fetch(`${API_BASE}/api/v1/auth/logout`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refresh }),
+    body: JSON.stringify({
+      refresh_token: refresh,
+      ...(access ? { access_token: access } : {}),
+    }),
   });
 }

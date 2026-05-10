@@ -8,6 +8,9 @@ import zlib
 import numpy as np
 from sqlalchemy.orm import Session
 
+from app.ml.feature_engineering import DishFeatures
+from app.ml.scoring import GoalInputs, HealthInputs
+
 
 def _goal_feat(primary_goal: str) -> float:
     s = (primary_goal or "").strip()
@@ -49,6 +52,36 @@ def row_to_features(
 
 
 FEATURE_COUNT = 16
+
+
+def vector_from_dish_context(feat: DishFeatures, goals: GoalInputs, health: HealthInputs) -> list[float]:
+    """Same 16-D vector as training; use at inference for the surrogate regressor."""
+    f, g, h = feat, goals, health
+    fs = {
+        "calories": f.calories,
+        "protein_g": f.protein_g,
+        "carbs_g": f.carbs_g,
+        "fat_g": f.fat_g,
+        "sodium_mg": f.sodium_mg,
+        "sugar_g": f.sugar_g,
+        "fiber_g": f.fiber_g,
+        "cooking_score": f.cooking_score,
+    }
+    req = {
+        "goals": {
+            "primary_goal": g.primary_goal,
+            "protein_target_g": g.protein_target_g,
+            "carbs_target_g": g.carbs_target_g,
+            "fat_target_g": g.fat_target_g,
+        },
+        "health": {
+            "allergens": h.allergens,
+            "diets": h.diets,
+            "max_sodium_mg": h.max_sodium_mg,
+            "max_sugar_g": h.max_sugar_g,
+        },
+    }
+    return row_to_features(feature_snapshot=fs, request_snapshot=req)
 
 
 def load_xy_from_db(

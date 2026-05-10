@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import secrets
+import uuid
 from typing import Any
 
 import bcrypt
@@ -31,6 +32,7 @@ def create_access_token(user_id: int, email: str) -> tuple[str, int]:
         "email": email,
         "exp": expire,
         "type": "access",
+        "jti": str(uuid.uuid4()),
     }
     token = jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
     expires_in = int(settings.access_token_expire_minutes * 60)
@@ -65,6 +67,12 @@ def store_refresh_token(db: Session, user_id: int) -> str:
 
 def find_valid_refresh_row(db: Session, raw: str) -> RefreshToken | None:
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
+    from app.redis_auth import is_refresh_revoked_cached
+    from app.redis_client import get_redis
+
+    r = get_redis()
+    if r is not None and is_refresh_revoked_cached(r, token_hash):
+        return None
     row = (
         db.query(RefreshToken)
         .filter(RefreshToken.token_hash == token_hash, RefreshToken.revoked_at.is_(None))
@@ -96,6 +104,13 @@ def revoke_refresh_by_raw(db: Session, raw: str) -> bool:
         return False
     row.revoked_at = dt.datetime.now(dt.UTC)
     db.commit()
+    from app.redis_auth import mark_refresh_revoked
+    from app.redis_client import get_redis
+
+    rx = get_redis()
+    if rx is not None:
+        ttl = max(60, int(settings.refresh_token_expire_days * 86400))
+        mark_refresh_revoked(rx, token_hash, ttl)
     return True
 
 

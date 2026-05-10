@@ -44,5 +44,18 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ML_METRICS_INTERNAL_SECRET"),
     )
 
+    #: Path to joblib-pickled sklearn ensemble (`BITESENSE_ML_EXPORT_PATH` from training). Empty = heuristic-only.
+    bitesense_ml_ensemble_path: str = Field(default="", validation_alias=AliasChoices("BITESENSE_ML_ENSEMBLE_PATH"))
+    #: final = w * heuristic + (1-w) * surrogate. Only applies when ensemble loads successfully.
+    bitesense_ml_blend_heuristic: float = Field(
+        default=0.55,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("BITESENSE_ML_BLEND_HEURISTIC"),
+    )
+
+    #: e.g. redis://redis:6379/0 — empty disables Redis-backed auth helpers (refresh cache, access denylist).
+    redis_url: str = Field(default="", validation_alias=AliasChoices("REDIS_URL"))
+
 
 settings = Settings()

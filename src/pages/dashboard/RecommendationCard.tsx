@@ -96,9 +96,16 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
           <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.25 }}>{data.dishName}</h3>
           <p style={{ margin: '0.35rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.35 }}>{metaLine}</p>
         </div>
-        <MatchScorePill icon={Star} variant="accent">
-          {data.score} / 100
-        </MatchScorePill>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
+          <MatchScorePill icon={Star} variant="accent">
+            {data.score} / 100
+          </MatchScorePill>
+          {data.scoreHeuristic != null && data.scoreMl != null && (
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'right', maxWidth: '9rem', lineHeight: 1.3 }}>
+              Hybrid {data.scoreHeuristic} · ML {data.scoreMl}
+            </span>
+          )}
+        </div>
       </div>
 
       <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>

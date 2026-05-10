@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import CurrentUser, MlMetricsAccess
 from app.ml import metrics as rec_metrics
-from app.ml.metrics import MODEL_VERSION
 from app.menu_extraction.dishes import rows_to_rank_entries
 from app.ml.ranker import GoalInputs, HealthInputs, rank_dishes
 from app.models import MenuScan, RecommendationResult, RecommendationRun, UserGoals, UserHealth
@@ -122,7 +121,8 @@ def rank_menu(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Scan has no dishes")
 
     goals, health = _load_goals_health(db, user.id)
-    ranked, n_filtered = rank_dishes(dish_entries, goals, health, top_n=body.top_n)
+    ranked, n_filtered, blend_info = rank_dishes(dish_entries, goals, health, top_n=body.top_n)
+    mv = rec_metrics.resolve_model_version(surrogate_used=bool(blend_info.get("surrogate_used")))
 
     latency_s = time.perf_counter() - t0
     latency_ms = round(latency_s * 1000.0, 2)
@@ -148,17 +148,22 @@ def rank_menu(
         "scan_id": scan.id,
     }
     metrics_payload: dict[str, object] = {
-        "model_version": MODEL_VERSION,
+        "model_version": mv,
         "latency_ms": latency_ms,
         "input_dishes": len(dish_entries),
         "filtered_out": n_filtered,
         "output_dishes": len(ranked),
+        "surrogate_used": blend_info.get("surrogate_used"),
+        "blend_heuristic_weight": blend_info.get("blend_heuristic_weight"),
+        "mean_heuristic": blend_info.get("mean_heuristic"),
+        "mean_ml": blend_info.get("mean_ml"),
+        "mean_final": blend_info.get("mean_final"),
     }
 
     run_row = RecommendationRun(
         user_id=user.id,
         menu_scan_id=scan.id,
-        model_version=MODEL_VERSION,
+        model_version=mv,
         request_snapshot=request_snapshot,
         metrics=metrics_payload,
     )
@@ -214,6 +219,8 @@ def rank_menu(
                 fat_fill=rd.fat_fill,
                 why_match=rd.why_match,
                 smart_mods=rd.smart_mods,
+                score_heuristic=rd.score_heuristic,
+                score_ml=rd.score_ml,
             )
         )
 
@@ -227,22 +234,24 @@ def rank_menu(
         output_dishes=len(ranked),
         filtered_out=n_filtered,
         persisted=True,
+        blend=blend_info,
     )
 
     logger.info(
-        "METRICS rank user_id=%s run_id=%s latency_ms=%s input=%d output=%d filtered=%d model=%s",
+        "METRICS rank user_id=%s run_id=%s latency_ms=%s input=%d output=%d filtered=%d model=%s surrogate=%s",
         user.id,
         run_row.id,
         latency_ms,
         len(dish_entries),
         len(ranked),
         n_filtered,
-        MODEL_VERSION,
+        mv,
+        blend_info.get("surrogate_used"),
     )
 
     return RecommendRankOut(
         run_id=run_row.id,
-        model_version=MODEL_VERSION,
+        model_version=mv,
         restaurant_label=restaurant_label,
         location=location_label,
         last_scan_at=scan.created_at,

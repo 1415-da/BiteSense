@@ -5,10 +5,16 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from typing import Any
 
+import numpy as np
+
+from app.config import settings
+from app.ml.dataset_recommendations import FEATURE_COUNT, vector_from_dish_context
 from app.ml.explanations import build_mods, build_why_lines
 from app.ml.feature_engineering import DishFeatures, dish_tokens_lower, extract_features
 from app.ml.scoring import GoalInputs, HealthInputs, macro_fills, score_dish
+from app.ml.surrogate_model import predict_scores_clipped
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +56,9 @@ class RankedDish:
     smart_mods: list[str]
     features: DishFeatures
     filtered_reason: str | None = None
+    #: Set after surrogate step: pure hybrid vs ML (when blend active)
+    score_heuristic: float | None = None
+    score_ml: float | None = None
 
 
 def _violates_diet(name_lower: str, diets: list[str]) -> str | None:
@@ -92,11 +101,21 @@ def rank_dishes(
     health: HealthInputs,
     *,
     top_n: int = 6,
-) -> tuple[list[RankedDish], int]:
+) -> tuple[list[RankedDish], int, dict[str, Any]]:
     """
     Rank dishes. Each entry is (display_name, scoring_text): scoring_text includes
     description/ingredients for filters and features; display_name is shown in the UI.
+
+    When ``BITESENSE_ML_ENSEMBLE_PATH`` loads, ``score`` blends heuristic + surrogate:
+    ``w * heuristic + (1-w) * ml`` with ``w = BITESENSE_ML_BLEND_HEURISTIC``.
     """
+    blend_info: dict[str, Any] = {
+        "surrogate_used": False,
+        "blend_heuristic_weight": float(settings.bitesense_ml_blend_heuristic),
+        "mean_heuristic": None,
+        "mean_ml": None,
+        "mean_final": None,
+    }
     filtered = 0
     candidates: list[RankedDish] = []
 
@@ -143,6 +162,36 @@ def rank_dishes(
             )
         )
 
+    if candidates:
+        X = np.asarray(
+            [vector_from_dish_context(c.features, goals, health) for c in candidates],
+            dtype=np.float64,
+        )
+        if X.shape[1] != FEATURE_COUNT:
+            raise RuntimeError(f"feature dim {X.shape[1]} != {FEATURE_COUNT}")
+        ml_scores = predict_scores_clipped(X)
+        w = float(settings.bitesense_ml_blend_heuristic)
+        if ml_scores is not None:
+            blend_info["surrogate_used"] = True
+            for i, c in enumerate(candidates):
+                h = float(c.score)
+                m = float(ml_scores[i])
+                c.score_heuristic = h
+                c.score_ml = m
+                c.score = w * h + (1.0 - w) * m
+        else:
+            for c in candidates:
+                c.score_heuristic = float(c.score)
+                c.score_ml = None
+
+        hs = [float(c.score_heuristic or c.score) for c in candidates]
+        blend_info["mean_heuristic"] = round(sum(hs) / len(hs), 4)
+        if blend_info["surrogate_used"]:
+            mlv = [float(c.score_ml) for c in candidates if c.score_ml is not None]
+            blend_info["mean_ml"] = round(sum(mlv) / len(mlv), 4) if mlv else None
+        finals = [float(c.score) for c in candidates]
+        blend_info["mean_final"] = round(sum(finals) / len(finals), 4)
+
     candidates.sort(key=lambda r: r.score, reverse=True)
     top = candidates[: max(1, top_n)]
-    return top, filtered
+    return top, filtered, blend_info

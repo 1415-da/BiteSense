@@ -5,6 +5,10 @@ export interface RecommendationCardData {
   mealType: string;
   calories: number;
   score: number;
+  /** Hybrid-only score when ML blend is active */
+  scoreHeuristic?: number;
+  /** Surrogate model score when blend is active */
+  scoreMl?: number;
   rank: number;
   proteinG: number;
   carbsG: number;
@@ -45,6 +49,8 @@ export interface RecommendRankApiRow {
   fat_fill: number;
   why_match: string[];
   smart_mods: string[];
+  score_heuristic?: number | null;
+  score_ml?: number | null;
 }
 
 export interface RecommendRankApiResponse {
@@ -71,6 +77,9 @@ export function mapRecommendRankApiToPayload(res: RecommendRankApiResponse): Sca
     mealType: r.meal_type,
     calories: r.calories,
     score: Math.round(r.score),
+    scoreHeuristic:
+      r.score_heuristic != null && Number.isFinite(r.score_heuristic) ? Math.round(r.score_heuristic) : undefined,
+    scoreMl: r.score_ml != null && Number.isFinite(r.score_ml) ? Math.round(r.score_ml) : undefined,
     rank: r.rank,
     proteinG: r.protein_g,
     carbsG: r.carbs_g,

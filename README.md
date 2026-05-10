@@ -11,10 +11,17 @@
 3. Verify backend health:
    - `http://localhost:8000/health`
 
-4. (Optional) run frontend separately:
+4. **Web UI in Docker** (static build + nginx):
+   - `docker compose up -d --build ui` — open **`http://localhost:3000`** (override host port with **`UI_HOST_PORT`** in `.env`).
+   - The browser calls the API at **`VITE_PUBLIC_API_BASE_URL`** (default `http://localhost:8000`); ensure **`CORS_ALLOWED_ORIGINS`** in `.env` includes your UI origin (defaults now include `http://localhost:3000`).
+
+5. **Redis** (cache/sessions — optional until the app uses it):
+   - `docker compose up -d redis` — **`localhost:6379`** (or **`REDIS_HOST_PORT`**). Data in volume **`redis_data`**.
+
+6. (Optional) run the frontend dev server on the host instead:
    - `npm run dev`
 
-5. (Optional) open DB UI (Adminer):
+7. (Optional) open DB UI (Adminer):
    - `http://localhost:8081`
    - System: `PostgreSQL`
    - Server: `db`
@@ -22,11 +29,11 @@
    - Password: `${POSTGRES_PASSWORD}` (default `postgres`)
    - Database: `${POSTGRES_DB}` (default `bitesense`)
 
-6. **ML metrics dashboard** (compose includes `ml-flow` — not the MLflow product):
+8. **ML metrics dashboard** (compose includes `ml-flow` — not the MLflow product):
    - Open `http://localhost:9092` for hybrid scorer JSON metrics (uses `ML_METRICS_INTERNAL_SECRET` from `.env`, same as the API). The service calls `http://api:8000` by default and ignores host proxy env inside the container (`trust_env=false` + empty `HTTP_PROXY`).
    - Prometheus text: `http://localhost:9092/raw/prometheus` (and on the API: `http://localhost:8000/api/v1/recommendations/metrics/prometheus` with the same auth as `/metrics`).
 
-7. **MLflow** (real tracking UI — RMSE, MAE, MAPE, R², runs, artifacts):
+9. **MLflow** (real tracking UI — RMSE, MAE, MAPE, R², runs, artifacts):
    - Start or rebuild so the `mlflow` service is running: `docker compose up -d --build mlflow`
    - Open **`http://localhost:5050`** (default host port). On macOS, **avoid port 5000** for MLflow: AirPlay Receiver binds `*:5000` (blank page). **`MLFLOW_HOST_PORT`** defaults to **`5050`** (`5050:5000`). Set `MLFLOW_HOST_PORT` in `.env` if that port is busy.
    - Store/artifacts persist in the `mlflow_data` volume.
@@ -47,15 +54,28 @@
 - API logs: `docker compose logs -f api`
 - DB logs: `docker compose logs -f db`
 - Adminer logs: `docker compose logs -f adminer`
+- UI (nginx) logs: `docker compose logs -f ui`
 - ML flow UI logs: `docker compose logs -f ml-flow`
 - MLflow server logs: `docker compose logs -f mlflow`
+- Redis logs: `docker compose logs -f redis`
 
 ## Notes
 
+- **Redis** (when `REDIS_URL` is set, e.g. in Docker): caches revoked refresh hashes and supports immediate access-token invalidation on logout when the client sends `access_token` with `refresh_token`. `/health` reports `redis: ok|disabled|error`.
 - Local (outside Docker) DB URL in `.env` uses `localhost`.
 - Docker API service overrides `DATABASE_URL` to use host `db` inside the Docker network.
 - Postgres is intentionally not published to host to avoid random invalid startup packets and reduce exposure.
 - Required backend driver for Postgres: `psycopg[binary]` (already in `backend/requirements.txt`).
+
+## Surrogate + heuristic blend (optional)
+
+After training, export the ensemble and point the API at the file:
+
+1. `BITESENSE_ML_EXPORT_PATH=/app/models/ensemble.joblib` (or host path under `backend/models/`) when running `python -m app.ml.train_recommender_mlflow`.
+2. Set `BITESENSE_ML_ENSEMBLE_PATH=/app/models/ensemble.joblib` in `.env` (Compose mounts `./backend/models` read-only).
+3. Tune `BITESENSE_ML_BLEND_HEURISTIC` (default `0.55` = 55% heuristic, 45% surrogate).
+
+Ranking uses **`hybrid-v1+surrogate`** when the file loads; persisted run metrics include `surrogate_used`, `mean_heuristic`, `mean_ml`, `mean_final`. Prometheus exposes `bitesense_ml_surrogate_active` and related gauges.
 
 ## Hybrid menu recommender (API)
 

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.auth_utils import (
     create_access_token,
+    decode_access_token,
     find_valid_refresh_row,
     get_user_by_id,
     hash_password,
@@ -13,6 +14,8 @@ from app.auth_utils import (
     store_refresh_token,
     verify_password,
 )
+from app.redis_auth import denylist_access_jti
+from app.redis_client import get_redis
 from app.database import get_db
 from app.deps import CurrentUser
 from app.models import User
@@ -26,6 +29,18 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _access_ttl_seconds(payload: dict) -> int:
+    import time
+
+    from app.config import settings as app_settings
+
+    exp = payload.get("exp")
+    now = int(time.time())
+    if isinstance(exp, (int, float)):
+        return max(1, int(exp) - now)
+    return max(60, int(app_settings.access_token_expire_minutes * 60))
 
 
 @router.post("/register", response_model=TokenResponse)
@@ -84,6 +99,12 @@ def refresh_tokens(body: RefreshRequest, db: Annotated[Session, Depends(get_db)]
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(body: LogoutRequest, db: Annotated[Session, Depends(get_db)]) -> None:
     revoke_refresh_by_raw(db, body.refresh_token)
+    if body.access_token:
+        pl = decode_access_token(body.access_token)
+        if pl and pl.get("jti"):
+            rx = get_redis()
+            if rx is not None:
+                denylist_access_jti(rx, str(pl["jti"]), _access_ttl_seconds(pl))
 
 
 @router.get("/me", response_model=UserPublic)

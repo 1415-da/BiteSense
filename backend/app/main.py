@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import Base, engine
 from app.migrate import run_sqlite_migrations
+from app.redis_client import redis_ping_ok
 from app.routers.auth import router as auth_router
 from app.routers.me import router as me_router
 from app.routers.recommendations import router as recommendations_router
@@ -40,7 +41,13 @@ app.include_router(recommendations_router, prefix="/api/v1")
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    out: dict[str, object] = {"status": "ok"}
+    rp = redis_ping_ok()
+    if rp is None:
+        out["redis"] = "disabled"
+    else:
+        out["redis"] = "ok" if rp else "error"
+    return out
 
 
 @app.get("/favicon.ico", include_in_schema=False)

@@ -33,6 +33,8 @@ class RefreshRequest(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh_token: str
+    #: Optional — when Redis is enabled, invalidates the access token immediately (logout from all tabs).
+    access_token: str | None = None
 
 
 class UserPublic(BaseModel):

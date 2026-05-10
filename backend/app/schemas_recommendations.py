@@ -24,6 +24,8 @@ class RecommendationRowOut(BaseModel):
     fat_fill: float
     why_match: list[str]
     smart_mods: list[str]
+    score_heuristic: float | None = None
+    score_ml: float | None = None
 
 
 class RecommendRankOut(BaseModel):

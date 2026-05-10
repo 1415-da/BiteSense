@@ -24,13 +24,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-bitesense}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-replace-with-a-strong-secret-in-production}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
       REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://127.0.0.1:5173,http://localhost:5173}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://127.0.0.1:5173,http://localhost:5173,http://localhost:3000,http://127.0.0.1:3000}
       ML_METRICS_INTERNAL_SECRET: ${ML_METRICS_INTERNAL_SECRET:-dev-ml-metrics-change-me}
+      BITESENSE_ML_ENSEMBLE_PATH: ${BITESENSE_ML_ENSEMBLE_PATH:-}
+      BITESENSE_ML_BLEND_HEURISTIC: ${BITESENSE_ML_BLEND_HEURISTIC:-0.55}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       # Avoid proxy (Orb/Docker Desktop) breaking httpx/mlflow to internal services
       HTTP_PROXY: ""
       HTTPS_PROXY: ""
@@ -39,6 +44,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/app:/app/app
+      - ./backend/models:/app/models:ro
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   ml-flow:
@@ -82,6 +88,33 @@ services:
     ports:
       - "8081:8080"
 
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+      args:
+        VITE_PUBLIC_API_BASE_URL: ${VITE_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    container_name: bitesense-ui
+    restart: unless-stopped
+    ports:
+      - "${UI_HOST_PORT:-3000}:80"
+
+  redis:
+    image: redis:7-alpine
+    container_name: bitesense-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   postgres_data:
   mlflow_data:
+  redis_data:
