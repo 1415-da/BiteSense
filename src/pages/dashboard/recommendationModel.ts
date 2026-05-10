@@ -22,6 +22,75 @@ export interface ScanRecommendationsPayload {
   lastScanAt: string;
   confidence: number | null;
   rows: RecommendationCardData[];
+  /** From API rank metrics when available */
+  rankInputCount?: number;
+  rankFilteredCount?: number;
+  rankOutputCount?: number;
+}
+
+/** Backend POST /api/v1/recommendations/rank response (subset used by UI). */
+export interface RecommendRankApiRow {
+  id: string;
+  dish_name: string;
+  restaurant_label: string;
+  meal_type: string;
+  score: number;
+  rank: number;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  protein_fill: number;
+  carbs_fill: number;
+  fat_fill: number;
+  why_match: string[];
+  smart_mods: string[];
+}
+
+export interface RecommendRankApiResponse {
+  run_id: number;
+  model_version: string;
+  restaurant_label: string;
+  location: string;
+  last_scan_at: string;
+  confidence: number | null;
+  metrics: Record<string, unknown>;
+  rows: RecommendRankApiRow[];
+}
+
+export function mapRecommendRankApiToPayload(res: RecommendRankApiResponse): ScanRecommendationsPayload {
+  const m = res.metrics ?? {};
+  const num = (k: string): number | undefined => {
+    const v = m[k];
+    return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+  };
+  const rows: RecommendationCardData[] = res.rows.map((r) => ({
+    id: r.id,
+    dishName: r.dish_name,
+    restaurant: r.restaurant_label,
+    mealType: r.meal_type,
+    calories: r.calories,
+    score: Math.round(r.score),
+    rank: r.rank,
+    proteinG: r.protein_g,
+    carbsG: r.carbs_g,
+    fatG: r.fat_g,
+    proteinFill: Math.min(100, Math.round(r.protein_fill)),
+    carbsFill: Math.min(100, Math.round(r.carbs_fill)),
+    fatFill: Math.min(100, Math.round(r.fat_fill)),
+    whyMatch: r.why_match,
+    smartMods: r.smart_mods,
+  }));
+  return {
+    restaurantLabel: res.restaurant_label,
+    location: res.location,
+    lastScanAt: new Date(res.last_scan_at).toLocaleString(),
+    confidence: res.confidence,
+    rows,
+    rankInputCount: num('input_dishes'),
+    rankFilteredCount: num('filtered_out'),
+    rankOutputCount: num('output_dishes'),
+  };
 }
 
 function hashString(s: string): number {
@@ -50,9 +119,10 @@ const MOD_POOL = [
 ];
 
 export function buildRecommendationsFromScan(
-  dishNames: string[],
+  dishes: Array<string | { name: string }>,
   meta: { restaurantLabel: string; location: string; lastScanAt: string; confidence: number | null },
 ): ScanRecommendationsPayload {
+  const dishNames = dishes.map((d) => (typeof d === 'string' ? d : d.name)).filter(Boolean);
   const mealTypes = ['Lunch', 'Dinner', 'Brunch', 'All day'];
   const rows: RecommendationCardData[] = dishNames.map((dishName, idx) => {
     const seed = hashString(dishName + String(idx));
@@ -96,5 +166,8 @@ export function buildRecommendationsFromScan(
     lastScanAt: meta.lastScanAt,
     confidence: meta.confidence,
     rows,
+    rankInputCount: dishNames.length,
+    rankFilteredCount: 0,
+    rankOutputCount: dishNames.length,
   };
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Filter, ScanLine, ShieldAlert, Target } from 'lucide-react';
 
-import type { GoalsDto, HealthDto } from '../../api/workspace';
+import { fetchRecommendationMetrics, type GoalsDto, type HealthDto } from '../../api/workspace';
 import type { DashboardTab } from './types';
 import DashboardTabShell from './DashboardTabShell';
 import RecommendationCard from './RecommendationCard';
@@ -9,6 +9,12 @@ import type { ScanRecommendationsPayload } from './recommendationModel';
 import { inputStyle } from './styles';
 
 const TOP_MATCH_LIMIT = 6;
+
+/** Start permissive so dishes appear; user can raise with the slider. */
+const DEFAULT_MIN_SCORE = 45;
+
+const SLIDER_MIN = 30;
+const SLIDER_MAX = 100;
 
 const inputCompact = {
   ...inputStyle,
@@ -132,17 +138,28 @@ const GoalsGuardrailsSnapshot: React.FC<{ goals: GoalsDto; health: HealthDto }> 
 
 const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, scanRecommendations, goals, health }) => {
   const [queryDraft, setQueryDraft] = useState('');
-  const [minScoreDraft, setMinScoreDraft] = useState(70);
+  const [minScoreDraft, setMinScoreDraft] = useState(DEFAULT_MIN_SCORE);
   const [queryApplied, setQueryApplied] = useState('');
-  const [minScoreApplied, setMinScoreApplied] = useState(70);
+  const [minScoreApplied, setMinScoreApplied] = useState(DEFAULT_MIN_SCORE);
+  const [scorerMetrics, setScorerMetrics] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     if (!scanRecommendations) return;
     setQueryDraft('');
     setQueryApplied('');
-    setMinScoreDraft(70);
-    setMinScoreApplied(70);
+    setMinScoreDraft(DEFAULT_MIN_SCORE);
+    setMinScoreApplied(DEFAULT_MIN_SCORE);
   }, [scanRecommendations?.lastScanAt]);
+
+  useEffect(() => {
+    if (!scanRecommendations?.rows.length) {
+      setScorerMetrics(null);
+      return;
+    }
+    void fetchRecommendationMetrics()
+      .then((m) => setScorerMetrics(m))
+      .catch(() => setScorerMetrics(null));
+  }, [scanRecommendations?.rows.length, scanRecommendations?.lastScanAt]);
 
   const filtered = useMemo(() => {
     if (!scanRecommendations) return [];
@@ -160,7 +177,7 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, sca
     setMinScoreApplied(minScoreDraft);
   };
 
-  if (!scanRecommendations || scanRecommendations.rows.length === 0) {
+  if (!scanRecommendations) {
     return (
       <DashboardTabShell
         title="Recommendations"
@@ -201,6 +218,89 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, sca
           <button type="button" className="btn btn-primary" onClick={() => onNavigate('Scan Menu')}>
             Go to Scan Menu
           </button>
+        </div>
+      </DashboardTabShell>
+    );
+  }
+
+  const allDishesFilteredByHealth =
+    scanRecommendations.rows.length === 0 &&
+    (scanRecommendations.rankInputCount ?? 0) > 0 &&
+    (scanRecommendations.rankOutputCount ?? 0) === 0;
+
+  if (scanRecommendations.rows.length === 0) {
+    if (allDishesFilteredByHealth) {
+      const nIn = scanRecommendations.rankInputCount ?? 0;
+      const nF = scanRecommendations.rankFilteredCount ?? nIn;
+      return (
+        <DashboardTabShell
+          title="Recommendations"
+          subtitle="Your health guardrails excluded every dish from this scan."
+        >
+          <div
+            className="glass"
+            style={{
+              borderRadius: '1rem',
+              padding: '2rem 1.5rem',
+              maxWidth: '36rem',
+              margin: '0 auto',
+              border: '1px solid rgba(232, 124, 110, 0.35)',
+              background: 'rgba(232, 124, 110, 0.06)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <ShieldAlert size={22} color="var(--accent-danger)" />
+              <h2 style={{ fontSize: '1.2rem', margin: 0 }}>No dishes left after allergen & diet filters</h2>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.55, marginBottom: '1rem' }}>
+              The menu had <strong style={{ color: 'var(--text-primary)' }}>{nIn}</strong> parsed entr{ nIn === 1 ? 'y' : 'ies'}, but{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>{nF}</strong> matched an allergen or conflicted with your diet rules, so nothing
+              could be ranked. This often happens with shellfish-safe rules on seafood-heavy menus.
+            </p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+              Update <strong>Health Preferences</strong> (e.g. adjust allergens), or scan a different page/section of the menu.
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <button type="button" className="btn btn-primary" onClick={() => onNavigate('Health Preferences')}>
+                Edit health preferences
+              </button>
+              <button type="button" className="btn btn-outline" onClick={() => onNavigate('Scan Menu')}>
+                New scan
+              </button>
+            </div>
+          </div>
+          <div style={{ marginTop: '1rem', maxWidth: '36rem', marginLeft: 'auto', marginRight: 'auto' }}>
+            <GoalsGuardrailsSnapshot goals={goals} health={health} />
+          </div>
+        </DashboardTabShell>
+      );
+    }
+
+    return (
+      <DashboardTabShell title="Recommendations" subtitle="We could not build matches from your latest scan.">
+        <div
+          className="glass"
+          style={{
+            borderRadius: '1rem',
+            padding: '2.5rem 1.5rem',
+            textAlign: 'center',
+            maxWidth: '32rem',
+            margin: '0 auto',
+            border: '1px dashed var(--border)',
+          }}
+        >
+          <h2 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>No ranked dishes yet</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1.25rem', lineHeight: 1.55 }}>
+            Try scanning again with a clearer image or PDF, or open Health Preferences if rules may be too strict.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'center' }}>
+            <button type="button" className="btn btn-primary" onClick={() => onNavigate('Scan Menu')}>
+              Scan Menu
+            </button>
+            <button type="button" className="btn btn-outline" onClick={() => onNavigate('Health Preferences')}>
+              Health Preferences
+            </button>
+          </div>
         </div>
       </DashboardTabShell>
     );
@@ -247,12 +347,12 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, sca
             style={{ ...inputCompact }}
           />
           <label style={{ display: 'block', marginBottom: '0.2rem', fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Min score · {minScoreDraft}
+            Min score · {minScoreDraft} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(starts at {DEFAULT_MIN_SCORE}; raise to focus on higher matches)</span>
           </label>
           <input
             type="range"
-            min={60}
-            max={100}
+            min={SLIDER_MIN}
+            max={SLIDER_MAX}
             value={minScoreDraft}
             onChange={(e) => setMinScoreDraft(Number(e.target.value))}
             style={{ width: '100%', marginBottom: '0.5rem', height: '6px', accentColor: 'var(--accent-primary)' }}
@@ -270,17 +370,25 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, sca
       </div>
 
       {gridRows.length > 0 && (
-        <h2
-          style={{
-            margin: '0 0 0.65rem',
-            fontSize: '1.05rem',
-            fontWeight: 700,
-            letterSpacing: '-0.02em',
-            color: 'var(--text-primary)',
-          }}
-        >
-          Top Matches
-        </h2>
+        <>
+          <h2
+            style={{
+              margin: '0 0 0.35rem',
+              fontSize: '1.05rem',
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              color: 'var(--text-primary)',
+            }}
+          >
+            Top Matches
+          </h2>
+          {scorerMetrics && (
+            <p style={{ margin: '0 0 0.65rem', fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+              Scorer · {String(scorerMetrics.model_version ?? '—')} · avg latency {String(scorerMetrics.avg_run_ms ?? '—')} ms · rank calls {String(scorerMetrics.total_rank_calls ?? 0)} ·
+              items scored {String(scorerMetrics.total_items_scored ?? 0)}
+            </p>
+          )}
+        </>
       )}
 
       <div className="recommendations-matches-grid">

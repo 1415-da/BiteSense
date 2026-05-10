@@ -1,7 +1,7 @@
 import datetime as dt
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class UserCreate(BaseModel):
@@ -92,6 +92,38 @@ class HealthOut(BaseModel):
     max_sugar_g: int
 
 
+class MenuDishIn(BaseModel):
+    name: str = Field(min_length=1, max_length=512)
+    description: str | None = Field(default=None, max_length=4000)
+    ingredients: list[str] = Field(default_factory=list)
+    details: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, v: str) -> str:
+        return v.strip()
+
+
+class MenuDishOut(MenuDishIn):
+    pass
+
+
+def _coerce_dish_list(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list) or len(raw) == 0:
+        raise ValueError("At least one dish is required")
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if isinstance(item, str):
+            s = item.strip()
+            if s:
+                out.append({"name": s, "description": None, "ingredients": [], "details": None})
+        elif isinstance(item, dict):
+            out.append(item)
+    if not out:
+        raise ValueError("At least one dish is required")
+    return out
+
+
 class MenuScanCreate(BaseModel):
     input_mode: Literal["url", "image", "pdf"]
     menu_url: str | None = None
@@ -100,11 +132,31 @@ class MenuScanCreate(BaseModel):
     cuisine_type: str | None = Field(default=None, max_length=255)
     location: str | None = Field(default=None, max_length=255)
     confidence: int | None = Field(default=None, ge=0, le=100)
-    dishes: list[str] = Field(min_length=1)
+    dishes: list[MenuDishIn] = Field(min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_string_dishes(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        dishes = data.get("dishes")
+        if dishes is not None:
+            data = {**data, "dishes": _coerce_dish_list(dishes)}
+        return data
 
 
 class MenuScanDishesPatch(BaseModel):
-    dishes: list[str] = Field(min_length=1)
+    dishes: list[MenuDishIn] = Field(min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_string_dishes(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        dishes = data.get("dishes")
+        if dishes is not None:
+            data = {**data, "dishes": _coerce_dish_list(dishes)}
+        return data
 
 
 class MenuScanOut(BaseModel):
@@ -116,8 +168,23 @@ class MenuScanOut(BaseModel):
     cuisine_type: str | None
     location: str | None
     confidence: int | None
-    dishes: list[str]
+    dishes: list[MenuDishOut]
     scanned_at: dt.datetime
+
+
+class MenuExtractOut(BaseModel):
+    confidence: int = Field(ge=0, le=100)
+    items: list[MenuDishOut]
+    raw_text: str | None = None
+
+
+class MenuExtractUrlIn(BaseModel):
+    url: str = Field(min_length=8, max_length=2048)
+
+    @field_validator("url")
+    @classmethod
+    def strip_url(cls, v: str) -> str:
+        return v.strip()
 
 
 class MenuScanSummary(BaseModel):

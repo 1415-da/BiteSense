@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, func, text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -31,6 +31,9 @@ class User(Base):
     )
     menu_scans: Mapped[list[MenuScan]] = relationship("MenuScan", back_populates="user", cascade="all, delete-orphan")
     saved_meals: Mapped[list[SavedMeal]] = relationship("SavedMeal", back_populates="user", cascade="all, delete-orphan")
+    recommendation_runs: Mapped[list[RecommendationRun]] = relationship(
+        "RecommendationRun", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class RefreshToken(Base):
@@ -98,6 +101,51 @@ class MenuScan(Base):
     )
 
     user: Mapped[User] = relationship("User", back_populates="menu_scans")
+    recommendation_runs: Mapped[list[RecommendationRun]] = relationship(
+        "RecommendationRun", back_populates="menu_scan", cascade="all, delete-orphan"
+    )
+
+
+class RecommendationRun(Base):
+    __tablename__ = "recommendation_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    menu_scan_id: Mapped[int] = mapped_column(ForeignKey("menu_scans.id", ondelete="CASCADE"), index=True, nullable=False)
+    model_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    request_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    metrics: Mapped[dict] = mapped_column(JSON, nullable=False, server_default=text("'{}'"))
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped[User] = relationship("User", back_populates="recommendation_runs")
+    menu_scan: Mapped[MenuScan] = relationship("MenuScan", back_populates="recommendation_runs")
+    results: Mapped[list[RecommendationResult]] = relationship(
+        "RecommendationResult", back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class RecommendationResult(Base):
+    __tablename__ = "recommendation_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("recommendation_runs.id", ondelete="CASCADE"), index=True, nullable=False)
+    rank_position: Mapped[int] = mapped_column(Integer, nullable=False)
+    dish_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    calories: Mapped[int] = mapped_column(Integer, nullable=False)
+    protein_g: Mapped[int] = mapped_column(Integer, nullable=False)
+    carbs_g: Mapped[int] = mapped_column(Integer, nullable=False)
+    fat_g: Mapped[int] = mapped_column(Integer, nullable=False)
+    protein_fill: Mapped[float] = mapped_column(Float, nullable=False)
+    carbs_fill: Mapped[float] = mapped_column(Float, nullable=False)
+    fat_fill: Mapped[float] = mapped_column(Float, nullable=False)
+    why_match: Mapped[list] = mapped_column(JSON, nullable=False)
+    smart_mods: Mapped[list] = mapped_column(JSON, nullable=False)
+    feature_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, server_default=text("'{}'"))
+
+    run: Mapped[RecommendationRun] = relationship("RecommendationRun", back_populates="results")
 
 
 class SavedMeal(Base):

@@ -8,17 +8,23 @@ import {
   createMenuScan,
   deleteSavedMeal,
   createSavedMeal,
+  extractMenuFromFile,
+  extractMenuFromUrl,
   fetchGoals,
   fetchHealth,
   fetchLatestScan,
   fetchScanHistory,
   fetchSavedMeals,
+  normalizeMenuDish,
   patchMenuScanDishes,
   patchProfile,
+  postRecommendationsRank,
   putGoals,
   putHealth,
   type GoalsDto,
   type HealthDto,
+  type MenuDishDto,
+  type MenuExtractDto,
   type MenuScanDto,
   type MenuScanSummaryDto,
   type SavedMealDto,
@@ -35,20 +41,16 @@ import ProfileGoalsTab from './dashboard/ProfileGoalsTab';
 import ProgressRing from './dashboard/ProgressRing';
 import RecommendationsTab from './dashboard/RecommendationsTab';
 import SparklineMini from './dashboard/SparklineMini';
-import { buildRecommendationsFromScan, type ScanRecommendationsPayload } from './dashboard/recommendationModel';
+import {
+  buildRecommendationsFromScan,
+  mapRecommendRankApiToPayload,
+  type ScanRecommendationsPayload,
+} from './dashboard/recommendationModel';
 import SavedMealsTab from './dashboard/SavedMealsTab';
 import { inputStyle, quickMetricStyle } from './dashboard/styles';
 import { DASHBOARD_TABS, type DashboardTab } from './dashboard/types';
 
 type ScanInputMode = 'url' | 'image' | 'pdf';
-
-const scanStages = [
-  'Upload received',
-  'OCR extraction',
-  'Dish parsing',
-  'Nutrition mapping',
-  'Personal scoring',
-];
 
 const DEFAULT_GOALS: GoalsDto = {
   primary_goal: 'Weight loss',
@@ -78,10 +80,12 @@ const DashboardPage: React.FC = () => {
   const [restaurantName, setRestaurantName] = React.useState('');
   const [cuisineType, setCuisineType] = React.useState('');
   const [location, setLocation] = React.useState('');
-  const [analysisIndex, setAnalysisIndex] = React.useState(-1);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
   const [scanError, setScanError] = React.useState<string | null>(null);
-  const [parsedItems, setParsedItems] = React.useState<string[]>([]);
+  const [parsedItems, setParsedItems] = React.useState<MenuDishDto[]>([]);
+  const [uploadFile, setUploadFile] = React.useState<File | null>(null);
+  const [debugIncludeRawText, setDebugIncludeRawText] = React.useState(false);
+  const [lastExtractRawText, setLastExtractRawText] = React.useState<string | null>(null);
   const [newItemDraft, setNewItemDraft] = React.useState('');
   const [analysisConfidence, setAnalysisConfidence] = React.useState<number | null>(null);
   const [latestScan, setLatestScan] = React.useState<MenuScanDto | null>(null);
@@ -103,16 +107,18 @@ const DashboardPage: React.FC = () => {
   const [accountError, setAccountError] = React.useState<string | null>(null);
 
   const hydrateFromScan = React.useCallback((scan: MenuScanDto) => {
-    setParsedItems([...scan.dishes]);
+    const rows = (scan.dishes ?? []).map(normalizeMenuDish).filter((d): d is MenuDishDto => d !== null);
+    setParsedItems(rows);
     setRestaurantName(scan.restaurant_name ?? '');
     setCuisineType(scan.cuisine_type ?? '');
     setLocation(scan.location ?? '');
     setMenuUrl(scan.menu_url ?? '');
     setUploadFileName(scan.upload_filename);
+    setUploadFile(null);
+    setLastExtractRawText(null);
     const m = scan.input_mode;
     if (m === 'url' || m === 'image' || m === 'pdf') setInputMode(m);
     setAnalysisConfidence(scan.confidence);
-    setAnalysisIndex(-1);
   }, []);
 
   const loadWorkspace = React.useCallback(async () => {
@@ -169,57 +175,6 @@ const DashboardPage: React.FC = () => {
     setProfileEmail(user?.email ?? '');
   }, [user]);
 
-  React.useEffect(() => {
-    if (!isAnalyzing) return;
-    const timer = window.setInterval(() => {
-      setAnalysisIndex((prev) => {
-        if (prev >= scanStages.length - 1) {
-          window.clearInterval(timer);
-          setIsAnalyzing(false);
-          const nextConfidence = 89;
-          setAnalysisConfidence(nextConfidence);
-          const fallback =
-            inputMode === 'url'
-              ? ['Grilled Chicken Caesar Salad', 'Margherita Flatbread', 'Tomato Basil Soup']
-              : ['Paneer Bowl', 'Steamed Dumplings', 'House Veg Stir Fry'];
-          setParsedItems((current) => {
-            const dishes = current.length > 0 ? current : fallback;
-            queueMicrotask(() => {
-              void (async () => {
-                setScanSyncing(true);
-                setScanError(null);
-                try {
-                  const saved = await createMenuScan({
-                    input_mode: inputMode,
-                    menu_url: inputMode === 'url' ? menuUrl.trim() || null : null,
-                    upload_filename: uploadFileName,
-                    restaurant_name: restaurantName.trim() || null,
-                    cuisine_type: cuisineType.trim() || null,
-                    location: location.trim() || null,
-                    confidence: nextConfidence,
-                    dishes,
-                  });
-                  setLatestScan(saved);
-                  setToastMessage('Menu scan saved.');
-                  setScanHistory(await fetchScanHistory());
-                } catch (e) {
-                  setScanError(e instanceof Error ? e.message : 'Could not save scan to the server.');
-                } finally {
-                  setScanSyncing(false);
-                }
-              })();
-            });
-            return dishes;
-          });
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, 700);
-
-    return () => window.clearInterval(timer);
-  }, [isAnalyzing, inputMode, menuUrl, uploadFileName, restaurantName, cuisineType, location]);
-
   const recentScanSummary = React.useMemo(() => {
     if (!latestScan) {
       return {
@@ -231,39 +186,114 @@ const DashboardPage: React.FC = () => {
     return {
       restaurant: restaurantName.trim() || latestScan.restaurant_name?.trim() || 'Restaurant scan',
       analyzedCount: parsedItems.length,
-      topPicks: parsedItems.length > 0 ? parsedItems.slice(0, 3) : ['-'],
+      topPicks: parsedItems.length > 0 ? parsedItems.slice(0, 3).map((d) => d.name) : ['-'],
     };
   }, [latestScan, restaurantName, parsedItems]);
 
-  const scanRecommendations = React.useMemo((): ScanRecommendationsPayload | null => {
-    if (!latestScan || parsedItems.length === 0) return null;
-    const lastAt = new Date(latestScan.scanned_at).toLocaleString();
-    const locationLabel = [cuisineType.trim(), location.trim()].filter(Boolean).join(' · ') || 'Any location';
-    return buildRecommendationsFromScan(parsedItems, {
-      restaurantLabel: restaurantName.trim() || latestScan.restaurant_name?.trim() || 'Menu scan',
-      location: locationLabel,
-      lastScanAt: lastAt,
-      confidence: analysisConfidence ?? latestScan.confidence,
-    });
-  }, [latestScan, parsedItems, restaurantName, cuisineType, location, analysisConfidence]);
+  const [scanRecommendations, setScanRecommendations] = React.useState<ScanRecommendationsPayload | null>(null);
+
+  React.useEffect(() => {
+    if (activeTab !== 'Recommendations') return;
+    if (!latestScan || parsedItems.length === 0) {
+      setScanRecommendations(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const api = await postRecommendationsRank({ scan_id: latestScan.id, top_n: 6 });
+        if (!cancelled) setScanRecommendations(mapRecommendRankApiToPayload(api));
+      } catch {
+        if (cancelled) return;
+        const lastAt = new Date(latestScan.scanned_at).toLocaleString();
+        const locationLabel = [cuisineType.trim(), location.trim()].filter(Boolean).join(' · ') || 'Any location';
+        setScanRecommendations(
+          buildRecommendationsFromScan(parsedItems, {
+            restaurantLabel: restaurantName.trim() || latestScan.restaurant_name?.trim() || 'Menu scan',
+            location: locationLabel,
+            lastScanAt: lastAt,
+            confidence: analysisConfidence ?? latestScan.confidence,
+          }),
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab,
+    latestScan,
+    parsedItems,
+    restaurantName,
+    cuisineType,
+    location,
+    analysisConfidence,
+    goals,
+    health,
+  ]);
 
   const handleAnalyze = () => {
-    setScanError(null);
+    void (async () => {
+      setScanError(null);
 
-    if (inputMode === 'url' && !menuUrl.trim()) {
-      setScanError('Please paste a menu URL before analyzing.');
-      return;
-    }
-    if ((inputMode === 'image' || inputMode === 'pdf') && !uploadFileName) {
-      setScanError(`Please upload a ${inputMode.toUpperCase()} file before analyzing.`);
-      return;
-    }
+      if (inputMode === 'url' && !menuUrl.trim()) {
+        setScanError('Please paste a menu URL before analyzing.');
+        return;
+      }
+      if ((inputMode === 'image' || inputMode === 'pdf') && !uploadFile) {
+        setScanError(`Please upload a ${inputMode.toUpperCase()} file before analyzing.`);
+        return;
+      }
 
-    setParsedItems([]);
-    setAnalysisConfidence(null);
-    setLatestScan(null);
-    setAnalysisIndex(0);
-    setIsAnalyzing(true);
+      setIsAnalyzing(true);
+      setAnalysisConfidence(null);
+      setLastExtractRawText(null);
+      try {
+        let extracted: MenuExtractDto;
+        if (inputMode === 'url') {
+          extracted = await extractMenuFromUrl(menuUrl.trim(), debugIncludeRawText);
+        } else {
+          extracted = await extractMenuFromFile(uploadFile!, debugIncludeRawText);
+        }
+        setLastExtractRawText(extracted.raw_text ?? null);
+        const items: MenuDishDto[] = extracted.items.map((x) => ({
+          name: x.name,
+          description: x.description ?? null,
+          ingredients: x.ingredients ?? [],
+          details: x.details ?? null,
+        }));
+        if (items.length === 0) {
+          setParsedItems([]);
+          setLatestScan(null);
+          setScanError('No dishes were detected. Try a clearer photo, a text-based PDF, or another menu page.');
+          return;
+        }
+        setParsedItems(items);
+        setAnalysisConfidence(extracted.confidence);
+        setScanSyncing(true);
+        const saved = await createMenuScan({
+          input_mode: inputMode,
+          menu_url: inputMode === 'url' ? menuUrl.trim() || null : null,
+          upload_filename: uploadFileName,
+          restaurant_name: restaurantName.trim() || null,
+          cuisine_type: cuisineType.trim() || null,
+          location: location.trim() || null,
+          confidence: extracted.confidence,
+          dishes: items,
+        });
+        setLatestScan(saved);
+        setToastMessage('Menu scan saved.');
+        setScanHistory(await fetchScanHistory());
+      } catch (e) {
+        setParsedItems([]);
+        setLatestScan(null);
+        setLastExtractRawText(null);
+        setScanError(e instanceof Error ? e.message : 'Could not extract or save the menu.');
+      } finally {
+        setScanSyncing(false);
+        setIsAnalyzing(false);
+      }
+    })();
   };
 
   const renderOverview = () => (
@@ -473,7 +503,11 @@ const DashboardPage: React.FC = () => {
               id="menu-file"
               type="file"
               accept={inputMode === 'image' ? 'image/png,image/jpeg,image/webp' : 'application/pdf'}
-              onChange={(e) => setUploadFileName(e.target.files?.[0]?.name ?? null)}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setUploadFile(f);
+                setUploadFileName(f?.name ?? null);
+              }}
               style={{ ...inputStyle, padding: '0.6rem 0.9rem' }}
             />
             {uploadFileName && (
@@ -507,6 +541,33 @@ const DashboardPage: React.FC = () => {
 
         {scanError && <p style={{ marginTop: '0.75rem', marginBottom: 0, color: 'var(--accent-danger)', fontSize: '0.88rem' }}>{scanError}</p>}
 
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '0.55rem',
+            marginTop: '0.85rem',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.4,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={debugIncludeRawText}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setDebugIncludeRawText(on);
+              if (!on) setLastExtractRawText(null);
+            }}
+            style={{ marginTop: '0.15rem' }}
+          />
+          <span>
+            Include raw extracted text (debug OCR, PDF text layer, or fetched HTML). Shows what the parser received so you can tune results or spot OCR errors.
+          </span>
+        </label>
+
         <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem' }}>
           <button type="button" className="btn btn-primary" onClick={handleAnalyze} disabled={isAnalyzing}>
             {isAnalyzing ? 'Analyzing…' : 'Analyze Menu'}
@@ -517,12 +578,13 @@ const DashboardPage: React.FC = () => {
             onClick={() => {
               setMenuUrl('');
               setUploadFileName(null);
+              setUploadFile(null);
               setParsedItems([]);
-              setAnalysisIndex(-1);
               setIsAnalyzing(false);
               setAnalysisConfidence(null);
               setLatestScan(null);
               setScanError(null);
+              setLastExtractRawText(null);
             }}
           >
             Reset
@@ -530,65 +592,138 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {(isAnalyzing || analysisIndex >= 0) && (
+      {lastExtractRawText !== null && (
         <div className="glass" style={{ borderRadius: '1rem', padding: '1rem', marginBottom: '1rem' }}>
-          <h3 style={{ fontSize: '1.05rem', marginBottom: '0.75rem' }}>Processing status</h3>
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
-            {scanStages.map((stage, idx) => {
-              const done = analysisIndex > idx;
-              const current = analysisIndex === idx;
-              return (
-                <div key={stage} style={{ ...quickMetricStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{stage}</span>
-                  <span style={{ color: done ? 'var(--accent-primary)' : current ? '#f6c760' : 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
-                    {done ? 'Done' : current ? 'Running' : 'Pending'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          {analysisConfidence !== null && (
-            <p style={{ marginTop: '0.75rem', marginBottom: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              Parsing confidence: <span style={{ color: 'var(--accent-primary)', fontWeight: 700 }}>{analysisConfidence}%</span>
-            </p>
-          )}
+          <details style={{ width: '100%' }}>
+            <summary style={{ cursor: 'pointer', fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Raw extracted text (debug)
+            </summary>
+            <pre
+              style={{
+                marginTop: '0.75rem',
+                marginBottom: 0,
+                maxHeight: 'min(50vh, 420px)',
+                overflow: 'auto',
+                padding: '0.75rem',
+                fontSize: '0.75rem',
+                lineHeight: 1.45,
+                background: 'rgba(0,0,0,0.22)',
+                borderRadius: '0.5rem',
+                border: '1px solid var(--border)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color: 'var(--text-primary)',
+              }}
+            >
+              {lastExtractRawText.length > 0 ? lastExtractRawText : '— (empty)'}
+            </pre>
+          </details>
+        </div>
+      )}
+
+      {isAnalyzing && (
+        <div className="glass" style={{ borderRadius: '1rem', padding: '1rem', marginBottom: '1rem' }}>
+          <h3 style={{ fontSize: '1.05rem', marginBottom: '0.5rem' }}>Processing</h3>
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Extracting text (OCR for images, text layer for PDFs), parsing dish names, descriptions, and nutrition hints…
+          </p>
         </div>
       )}
 
       {parsedItems.length > 0 && (
         <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
-          <h3 style={{ fontSize: '1.05rem', marginBottom: '0.75rem' }}>Parsed Dishes (editable)</h3>
-          <div style={{ display: 'grid', gap: '0.45rem', marginBottom: '0.75rem' }}>
+          <h3 style={{ fontSize: '1.05rem', marginBottom: '0.75rem' }}>Parsed dishes (editable)</h3>
+          <p style={{ margin: '0 0 0.85rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            Name, description, nutrition or portion details, and ingredient-style tags are stored with the scan and used for recommendations.
+          </p>
+          <div style={{ display: 'grid', gap: '0.6rem', marginBottom: '0.75rem' }}>
             {parsedItems.map((item, idx) => (
-              <div key={`${item}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem' }}>
-                <input
-                  value={item}
-                  onChange={(e) => {
-                    setParsedItems((current) => {
-                      const next = [...current];
-                      next[idx] = e.target.value;
-                      return next;
-                    });
-                  }}
-                  style={inputStyle}
-                />
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  style={{ padding: '0.6rem 0.75rem' }}
-                  onClick={() => {
-                    setParsedItems((current) => current.filter((_, i) => i !== idx));
-                  }}
-                >
-                  Remove
-                </button>
+              <div
+                key={`dish-${idx}`}
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '0.75rem',
+                  padding: '0.75rem',
+                }}
+              >
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'grid', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dish name</label>
+                    <input
+                      value={item.name}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setParsedItems((cur) => {
+                          const n = [...cur];
+                          n[idx] = { ...n[idx], name: v };
+                          return n;
+                        });
+                      }}
+                      style={inputStyle}
+                    />
+                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</label>
+                    <textarea
+                      value={item.description ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setParsedItems((cur) => {
+                          const n = [...cur];
+                          n[idx] = { ...n[idx], description: v.trim() ? v : null };
+                          return n;
+                        });
+                      }}
+                      rows={2}
+                      placeholder="Preparation, sides, sauces…"
+                      style={{ ...inputStyle, resize: 'vertical', minHeight: '3rem' }}
+                    />
+                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Details</label>
+                    <input
+                      value={item.details ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setParsedItems((cur) => {
+                          const n = [...cur];
+                          n[idx] = { ...n[idx], details: v.trim() ? v : null };
+                          return n;
+                        });
+                      }}
+                      placeholder="Portion / calories (e.g. 456g / 585 kcal)"
+                      style={inputStyle}
+                    />
+                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ingredients</label>
+                    <input
+                      value={item.ingredients.join(', ')}
+                      onChange={(e) => {
+                        const ing = e.target.value
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean);
+                        setParsedItems((cur) => {
+                          const n = [...cur];
+                          n[idx] = { ...n[idx], ingredients: ing };
+                          return n;
+                        });
+                      }}
+                      placeholder="Comma-separated (e.g. paneer, tomato, cream)"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ padding: '0.6rem 0.75rem' }}
+                    onClick={() => setParsedItems((current) => current.filter((_, i) => i !== idx))}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             ))}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', marginBottom: '0.9rem' }}>
             <input
-              placeholder="Add a missing dish"
+              placeholder="Add a dish by name"
               value={newItemDraft}
               onChange={(e) => setNewItemDraft(e.target.value)}
               style={inputStyle}
@@ -598,11 +733,14 @@ const DashboardPage: React.FC = () => {
               className="btn btn-outline"
               onClick={() => {
                 if (!newItemDraft.trim()) return;
-                setParsedItems((current) => [...current, newItemDraft.trim()]);
+                setParsedItems((current) => [
+                  ...current,
+                  { name: newItemDraft.trim(), ingredients: [], description: null, details: null },
+                ]);
                 setNewItemDraft('');
               }}
             >
-              Add Item
+              Add item
             </button>
           </div>
 

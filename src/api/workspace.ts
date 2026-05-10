@@ -1,4 +1,41 @@
 import { apiRequest, readApiError } from '../auth/api';
+import type { RecommendRankApiResponse } from '../pages/dashboard/recommendationModel';
+
+/** Structured dish row from extraction or saved scan (legacy scans may still be plain strings in older DB rows). */
+export interface MenuDishDto {
+  name: string;
+  description?: string | null;
+  ingredients: string[];
+  details?: string | null;
+}
+
+export interface MenuExtractDto {
+  confidence: number;
+  items: MenuDishDto[];
+  raw_text?: string | null;
+}
+
+/** Normalize legacy string rows or partial objects from the API into `MenuDishDto`. */
+export function normalizeMenuDish(raw: unknown): MenuDishDto | null {
+  if (typeof raw === 'string') {
+    const name = raw.trim();
+    return name ? { name, ingredients: [], description: null, details: null } : null;
+  }
+  if (raw && typeof raw === 'object' && 'name' in raw) {
+    const o = raw as Record<string, unknown>;
+    const name = String(o.name ?? '').trim();
+    if (!name) return null;
+    return {
+      name,
+      description: o.description != null ? String(o.description) : null,
+      ingredients: Array.isArray(o.ingredients)
+        ? o.ingredients.map((x) => String(x).trim()).filter(Boolean)
+        : [],
+      details: o.details != null ? String(o.details) : null,
+    };
+  }
+  return null;
+}
 
 export interface MenuScanDto {
   id: number;
@@ -9,7 +46,7 @@ export interface MenuScanDto {
   cuisine_type: string | null;
   location: string | null;
   confidence: number | null;
-  dishes: string[];
+  dishes: MenuDishDto[];
   scanned_at: string;
 }
 
@@ -58,7 +95,7 @@ export async function fetchScanHistory(): Promise<MenuScanSummaryDto[]> {
   return (await res.json()) as MenuScanSummaryDto[];
 }
 
-export async function patchMenuScanDishes(scanId: number, dishes: string[]): Promise<MenuScanDto> {
+export async function patchMenuScanDishes(scanId: number, dishes: MenuDishDto[]): Promise<MenuScanDto> {
   const res = await apiRequest(`/api/v1/scans/${scanId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -76,7 +113,7 @@ export async function createMenuScan(body: {
   cuisine_type?: string | null;
   location?: string | null;
   confidence?: number | null;
-  dishes: string[];
+  dishes: MenuDishDto[];
 }): Promise<MenuScanDto> {
   const res = await apiRequest('/api/v1/scans', {
     method: 'POST',
@@ -157,4 +194,43 @@ export async function changePassword(body: { current_password: string; new_passw
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await readApiError(res));
+}
+
+export async function postRecommendationsRank(body: { scan_id?: number | null; top_n?: number }): Promise<RecommendRankApiResponse> {
+  const res = await apiRequest('/api/v1/recommendations/rank', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scan_id: body.scan_id ?? null, top_n: body.top_n ?? 6 }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as RecommendRankApiResponse;
+}
+
+export async function fetchRecommendationMetrics(): Promise<Record<string, unknown>> {
+  const res = await apiRequest('/api/v1/recommendations/metrics', { method: 'GET' });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as Record<string, unknown>;
+}
+
+export async function extractMenuFromFile(file: File, includeRaw = false): Promise<MenuExtractDto> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const q = includeRaw ? '?include_raw=true' : '';
+  const res = await apiRequest(`/api/v1/scans/extract${q}`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as MenuExtractDto;
+}
+
+export async function extractMenuFromUrl(url: string, includeRaw = false): Promise<MenuExtractDto> {
+  const q = includeRaw ? '?include_raw=true' : '';
+  const res = await apiRequest(`/api/v1/scans/extract-url${q}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as MenuExtractDto;
 }

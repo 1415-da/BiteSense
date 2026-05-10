@@ -38,5 +38,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS"),
     )
 
+    #: When set, requests with matching header `X-ML-Internal-Secret` can read `/recommendations/metrics*` without JWT (Docker ml-flow only).
+    ml_metrics_internal_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ML_METRICS_INTERNAL_SECRET"),
+    )
+
 
 settings = Settings()
