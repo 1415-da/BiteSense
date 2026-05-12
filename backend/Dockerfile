@@ -12,6 +12,8 @@ RUN apt-get update \
 COPY requirements.txt requirements-ml.txt /app/
 RUN pip install --no-cache-dir -r /app/requirements.txt -r /app/requirements-ml.txt
 
+COPY alembic.ini /app/alembic.ini
+COPY alembic /app/alembic
 COPY app /app/app
 
 EXPOSE 8000

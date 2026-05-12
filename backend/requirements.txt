@@ -14,3 +14,4 @@ pytesseract==0.3.13
 httpx==0.28.1
 beautifulsoup4==4.12.3
 redis==5.2.1
+alembic==1.14.1

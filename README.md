@@ -59,6 +59,20 @@
 - MLflow server logs: `docker compose logs -f mlflow`
 - Redis logs: `docker compose logs -f redis`
 
+## Database migrations (Alembic)
+
+Alembic runs `upgrade head` automatically every time the API starts, so the schema stays in sync with the models. To create new migrations after changing `backend/app/models.py`:
+
+```bash
+# Inside Docker
+docker compose exec api alembic revision --autogenerate -m "describe the change"
+
+# Or locally (requires DATABASE_URL to point at a running Postgres)
+cd backend && PYTHONPATH=. alembic revision --autogenerate -m "describe the change"
+```
+
+Other useful commands: `alembic current`, `alembic history --verbose`, `alembic downgrade -1`.
+
 ## Notes
 
 - **Redis** (when `REDIS_URL` is set, e.g. in Docker): caches revoked refresh hashes and supports immediate access-token invalidation on logout when the client sends `access_token` with `refresh_token`. `/health` reports `redis: ok|disabled|error`.

@@ -34,6 +34,36 @@ Workspace (all require `Authorization: Bearer <access_token>`):
 
 SQLite database file `bitesense.db` is created under `backend/` when you use the default `DATABASE_URL`. Set `JWT_SECRET_KEY` in production.
 
+## Database migrations (Alembic)
+
+Alembic is wired into the FastAPI startup — every time the API starts it runs `alembic upgrade head`, so the schema is always up to date.
+
+### Common commands (run from `backend/`)
+
+```bash
+# Create a new migration after changing models.py
+alembic revision --autogenerate -m "describe the change"
+
+# Apply all pending migrations
+alembic upgrade head
+
+# Show current revision
+alembic current
+
+# Show migration history
+alembic history --verbose
+
+# Downgrade by one revision
+alembic downgrade -1
+```
+
+Inside Docker Compose the same commands work via `docker compose exec`:
+
+```bash
+docker compose exec api alembic revision --autogenerate -m "describe the change"
+docker compose exec api alembic current
+```
+
 ## PostgreSQL
 
 Set `DATABASE_URL=postgresql+psycopg://user:pass@host:5432/dbname` in the root `.env` and install a driver (e.g. `psycopg[binary]`).
