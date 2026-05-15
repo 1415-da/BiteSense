@@ -1,112 +1,254 @@
 # BiteSense
 
-## Run with PostgreSQL in Docker
+**Choose healthier meals before you order.**
 
-1. Copy env file:
-   - `cp .env.example .env`
+BiteSense is a full-stack web app that helps people make better restaurant choices. You upload or link a menu (URL, image, or PDF), the app extracts dishes and ingredients, then ranks meals against your personal goals, allergens, and diet rules. Each recommendation includes match scores, macro estimates, plain-language “why it fits” lines, and practical modification tips.
 
-2. Start Postgres + API:
-   - `docker compose up --build`
+---
 
-3. Verify backend health:
-   - `http://localhost:8000/health`
+## What this project is about
 
-4. **Web UI in Docker** (static build + nginx on host port **3000**):
-   - `docker compose up -d --build ui` — open **`http://localhost:3000`** (override with **`UI_HOST_PORT`** in `.env`).
-   - API calls use same-origin **`/api`** (nginx proxies to the `api` service), same pattern as Vite dev on **5173**.
+Eating out is hard when you care about macros, allergies, or specific diets. Menus are unstructured, portions are unclear, and “healthy” options are not obvious. BiteSense turns a menu into structured data and scores every dish for *your* profile—not a generic calorie chart.
 
-5. (Optional) run the Vite dev server on the host (**port 5173**):
-   - `npm run dev` — open **`http://localhost:5173`**
-   - Leave **`VITE_PUBLIC_API_BASE_URL`** empty in `.env` so `/api` is proxied to **`http://127.0.0.1:8000`**.
+**Typical flow:**
 
-6. **Redis** (cache/sessions — optional until the app uses it):
-   - `docker compose up -d redis` — **`localhost:6379`** (or **`REDIS_HOST_PORT`**). Data in volume **`redis_data`**.
+1. **Sign up** and set profile, fitness goals (macros, target weight, activity), and health guardrails (allergens, diets, sodium/sugar limits).
+2. **Scan a menu** from a restaurant website, photo, or PDF. Text is extracted via URL fetch, OCR (images), or PDF text layer + OCR fallback.
+3. **Review parsed dishes** in a compact editor—fix names, ingredients, or add items manually.
+4. **Get ranked recommendations** with hybrid scoring (rule-based heuristics + optional ML surrogate), filtered for allergens and diet conflicts.
+5. **Save favorites**, browse scan history, and refine goals over time.
 
-7. (Optional) open DB UI (Adminer):
-   - `http://localhost:8081`
-   - System: `PostgreSQL`
-   - Server: `db`
-   - Username: `${POSTGRES_USER}` (default `postgres`)
-   - Password: `${POSTGRES_PASSWORD}` (default `postgres`)
-   - Database: `${POSTGRES_DB}` (default `bitesense`)
+The product is built as a portfolio-grade demo: polished React UI, JWT auth, PostgreSQL persistence, Docker Compose for local deployment, and an ML pipeline (MLflow training, optional ensemble blend, optional LLM explanations).
 
-8. **ML metrics dashboard** (compose includes `ml-flow` — not the MLflow product):
-   - Open `http://localhost:9092` for hybrid scorer JSON metrics (uses `ML_METRICS_INTERNAL_SECRET` from `.env`, same as the API). The service calls `http://api:8000` by default and ignores host proxy env inside the container (`trust_env=false` + empty `HTTP_PROXY`).
-   - Prometheus text: `http://localhost:9092/raw/prometheus` (and on the API: `http://localhost:8000/api/v1/recommendations/metrics/prometheus` with the same auth as `/metrics`).
+---
 
-9. **MLflow** (real tracking UI — RMSE, MAE, MAPE, R², runs, artifacts):
-   - Start or rebuild so the `mlflow` service is running: `docker compose up -d --build mlflow`
-   - Open **`http://localhost:5050`** (default host port). On macOS, **avoid port 5000** for MLflow: AirPlay Receiver binds `*:5000` (blank page). **`MLFLOW_HOST_PORT`** defaults to **`5050`** (`5050:5000`). Set `MLFLOW_HOST_PORT` in `.env` if that port is busy.
-   - Store/artifacts persist in the `mlflow_data` volume.
-   - Log a training run (XGBoost + LightGBM + `VotingRegressor` ensemble; metrics are **out-of-sample** MAE/MAPE/R²/RMSE from `predict` vs held-out `y_test`, never hardcoded). When enough rows exist in Postgres (`recommendation_results` joined with run goals/health), the label is the **persisted hybrid `score`** and features match the ranker inputs. Otherwise the run falls back to synthetic data; check MLflow params `data_source` and `dataset_fallback_reason`.
-   - Optional: **`BITESENSE_ML_MIN_DB_ROWS`** (default `15`) — lower only for small dev DBs so training uses real rows sooner.
+## Features
 
-     ```bash
-     docker compose run --rm -e MLFLOW_TRACKING_URI=http://mlflow:5000 api python -m app.ml.train_recommender_mlflow
-     ```
+| Area | Capabilities |
+|------|----------------|
+| **Menu intake** | URL, image (PNG/JPEG/WebP), PDF upload; debug raw-text view for OCR tuning |
+| **Parsing** | Dish names, ingredient lines, descriptions; table-style menus (dish + ingredients columns) |
+| **Personalization** | Primary goal, macro targets, workouts/week, allergens, diet tags, sodium/sugar ceilings |
+| **Recommendations** | Top-N ranked cards, match score (0–100), macro bars, filter by search/min score |
+| **Explanations** | Rule-based “why it matches” + “smart modifications”; optional OpenAI-compatible LLM layer |
+| **Workspace** | Overview dashboard, scan history, saved meals, account & security |
+| **Auth** | Register/login, JWT access + refresh, password change, optional Redis-backed logout revoke |
+| **Observability** | Recommendation metrics API, Prometheus export, MLflow training runs |
 
-   - From your machine without Compose networking: `cd backend && MLFLOW_TRACKING_URI=http://127.0.0.1:5050 PYTHONPATH=. python -m app.ml.train_recommender_mlflow` (requires the same Python deps as the API image: `requirements.txt` + `requirements-ml.txt`).
+---
 
-## Useful commands
+## Tech stack
 
-- Start in background: `docker compose up -d --build`
-- Stop containers: `docker compose down`
-- Stop and remove DB volume: `docker compose down -v`
-- API logs: `docker compose logs -f api`
-- DB logs: `docker compose logs -f db`
-- Adminer logs: `docker compose logs -f adminer`
-- UI (nginx) logs: `docker compose logs -f ui`
-- ML flow UI logs: `docker compose logs -f ml-flow`
-- MLflow server logs: `docker compose logs -f mlflow`
-- Redis logs: `docker compose logs -f redis`
+| Layer | Technologies |
+|-------|----------------|
+| **Frontend** | React 19, TypeScript, Vite, React Router, Framer Motion, Lucide icons |
+| **Backend** | FastAPI, SQLAlchemy, Alembic, Pydantic, JWT (python-jose), httpx |
+| **Database** | PostgreSQL 16 |
+| **Cache** | Redis (optional; session revoke / token denylist) |
+| **ML** | scikit-learn, XGBoost, LightGBM, MLflow; optional OpenAI API for explanations |
+| **Menu extraction** | Tesseract OCR, PyMuPDF, custom parsers |
+| **Infra** | Docker Compose, nginx (production UI), Adminer (DB UI) |
 
-## Database migrations (Alembic)
+---
 
-Alembic runs `upgrade head` automatically every time the API starts, so the schema stays in sync with the models. To create new migrations after changing `backend/app/models.py`:
+## Architecture (high level)
+
+```text
+┌─────────────┐     /api proxy      ┌──────────────┐     ┌────────────┐
+│  React UI   │ ──────────────────► │  FastAPI     │ ──► │ PostgreSQL │
+│  (Vite/     │                     │  API :8000   │     │            │
+│   nginx)    │                     └──────┬───────┘     └────────────┘
+└─────────────┘                            │
+                                           ├──► Redis (optional)
+                                           ├──► Menu extract → parse → dishes
+                                           └──► Ranker (heuristic + optional ML + optional LLM)
+```
+
+**Ranking pipeline (simplified):** load user goals/health → filter dishes that violate allergen/diet rules → score survivors with heuristic features (macro fit, guardrails) → blend with optional trained ensemble → attach rule-based (and optional LLM) explanations → persist `recommendation_runs` / `recommendation_results`.
+
+---
+
+## Project structure
+
+```text
+BiteSense/
+├── src/                    # React frontend (landing + /dashboard)
+├── backend/
+│   ├── app/
+│   │   ├── routers/        # auth, me, scans, recommendations, saved_meals
+│   │   ├── ml/             # ranker, features, training, LLM explanations
+│   │   └── menu_extraction/
+│   ├── alembic/            # DB migrations
+│   └── tests/
+├── docker-compose.yml      # db, api, ui, redis, mlflow, ml-flow, adminer
+├── .env.example            # Shared env for frontend + backend
+└── README.md
+```
+
+---
+
+## Quick start
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose (recommended), or Node.js 22+ and Python 3.11+ for local dev
+- For PDF OCR in Docker: API image includes Tesseract
+
+### 1. Configure environment
 
 ```bash
-# Inside Docker
-docker compose exec api alembic revision --autogenerate -m "describe the change"
+cp .env.example .env
+```
 
-# Or locally (requires DATABASE_URL to point at a running Postgres)
+Edit `.env` as needed—at minimum set a strong `JWT_SECRET_KEY` for anything beyond local dev. See `.env.example` for all options (CORS, Redis, ML paths, OpenAI keys).
+
+### 2. Run with Docker (recommended)
+
+```bash
+docker compose up -d --build
+```
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| **API** | http://localhost:8000 | FastAPI (`/health`, `/api/v1/...`) |
+| **UI (Docker)** | http://localhost:3000 | Production build + nginx (`/api` proxied) |
+| **Adminer** | http://localhost:8081 | DB UI (server: `db`, user/pass from `.env`) |
+| **MLflow** | http://localhost:5050 | Experiment tracking (default host port) |
+| **ML metrics UI** | http://localhost:9092 | Hybrid scorer JSON/Prometheus viewer |
+
+**Frontend dev (hot reload)** — API and DB still in Docker:
+
+```bash
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173**. Leave `VITE_PUBLIC_API_BASE_URL` empty so Vite proxies `/api` → `http://127.0.0.1:8000`.
+
+> **Note:** After UI code changes, rebuild the Docker UI: `docker compose up -d --build ui`. Vite on port 5173 always serves the latest source.
+
+### 3. Verify
+
+- API health: http://localhost:8000/health  
+- Register on the landing page, then open **Dashboard** → **Scan Menu**
+
+---
+
+## Development
+
+### Frontend
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # production bundle → dist/
+npm run lint
+```
+
+### Backend (without Docker)
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-ml.txt
+
+# From repo root — DATABASE_URL in .env must reach Postgres
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Alembic runs `upgrade head` on API startup. To create a migration after model changes:
+
+```bash
+docker compose exec api alembic revision --autogenerate -m "describe the change"
+# or locally:
 cd backend && PYTHONPATH=. alembic revision --autogenerate -m "describe the change"
 ```
 
-Other useful commands: `alembic current`, `alembic history --verbose`, `alembic downgrade -1`.
+### Tests
 
-## Notes
+```bash
+cd backend && PYTHONPATH=. python -m pytest tests/ -v
+```
 
-- **Redis** (when `REDIS_URL` is set, e.g. in Docker): caches revoked refresh hashes and supports immediate access-token invalidation on logout when the client sends `access_token` with `refresh_token`. `/health` reports `redis: ok|disabled|error`.
-- Local (outside Docker) DB URL in `.env` uses `localhost`.
-- Docker API service overrides `DATABASE_URL` to use host `db` inside the Docker network.
-- Postgres is intentionally not published to host to avoid random invalid startup packets and reduce exposure.
-- Required backend driver for Postgres: `psycopg[binary]` (already in `backend/requirements.txt`).
+---
 
-## Surrogate + heuristic blend (optional)
+## Main API endpoints
 
-After training, export the ensemble and point the API at the file:
+All workspace routes require `Authorization: Bearer <access_token>` unless noted.
 
-1. `BITESENSE_ML_EXPORT_PATH=/app/models/ensemble.joblib` (or host path under `backend/models/`) when running `python -m app.ml.train_recommender_mlflow`.
-2. Set `BITESENSE_ML_ENSEMBLE_PATH=/app/models/ensemble.joblib` in `.env` (Compose mounts `./backend/models` read-only).
-3. Tune `BITESENSE_ML_BLEND_HEURISTIC` (default `0.55` = 55% heuristic, 45% surrogate).
+| Group | Examples |
+|-------|----------|
+| **Auth** | `POST /api/v1/auth/register`, `login`, `refresh`, `logout`, `GET /me` |
+| **Profile** | `GET/PATCH /api/v1/me/profile`, `PUT /api/v1/me/goals`, `PUT /api/v1/me/health` |
+| **Scans** | `POST /api/v1/scans/extract`, `extract-url`, `POST /api/v1/scans`, `GET /api/v1/scans/latest` |
+| **Recommendations** | `POST /api/v1/recommendations/rank`, `GET /history`, `GET /metrics` |
+| **Saved meals** | `GET/POST /api/v1/saved-meals`, `DELETE /api/v1/saved-meals/{id}` |
 
-Ranking uses **`hybrid-v1+surrogate`** when the file loads; persisted run metrics include `surrogate_used`, `mean_heuristic`, `mean_ml`, `mean_final`. Prometheus exposes `bitesense_ml_surrogate_active` and related gauges.
+Interactive docs (when API is running): http://localhost:8000/docs
 
-## Hybrid menu recommender (API)
+---
 
-- `POST /api/v1/recommendations/rank` — body `{ "scan_id": <optional>, "top_n": 6 }`. Uses saved goals/health + scan dishes; persists a `recommendation_runs` row and ranked `recommendation_results`.
-- `GET /api/v1/recommendations/metrics` — JWT, or header `X-ML-Internal-Secret` when `ML_METRICS_INTERNAL_SECRET` is set (used by `ml-flow`).
-- `GET /api/v1/recommendations/metrics/prometheus` — same auth; Prometheus text format.
-- `GET /api/v1/recommendations/history` — JWT required; recent runs for the user.
+## ML & recommendations
 
-Docker: watch scorer timing lines in API logs:
+- **Hybrid ranker** combines heuristic scoring with an optional exported ensemble (`BITESENSE_ML_ENSEMBLE_PATH`, blend weight `BITESENSE_ML_BLEND_HEURISTIC`).
+- **Training** logs to MLflow (MAE, MAPE, R², RMSE on held-out data):
+
+  ```bash
+  docker compose run --rm -e MLFLOW_TRACKING_URI=http://mlflow:5000 api \
+    python -m app.ml.train_recommender_mlflow
+  ```
+
+- **LLM explanations** (optional): set `OPENAI_API_KEY` and `BITESENSE_LLM_EXPLANATIONS=true` in `.env`. Without a key, rule-based explanations still work.
+
+- **Metrics:** `GET /api/v1/recommendations/metrics` (JWT or `X-ML-Internal-Secret`), Prometheus at `/metrics/prometheus`.
+
+Watch scorer timing in logs:
 
 ```bash
 docker compose logs -f api | grep METRICS
 ```
 
-## Backend tests
+---
+
+## Environment variables (summary)
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_PUBLIC_API_BASE_URL` | Frontend API base; empty = same-origin `/api` proxy |
+| `DATABASE_URL` | SQLAlchemy URL (Compose overrides host to `db`) |
+| `JWT_SECRET_KEY` | Sign access/refresh tokens |
+| `CORS_ALLOWED_ORIGINS` | Allowed browser origins |
+| `REDIS_URL` | Optional revoke cache |
+| `BITESENSE_ML_ENSEMBLE_PATH` | joblib ensemble for blended ranking |
+| `OPENAI_API_KEY` | Optional LLM explanations |
+
+Full list and comments: [`.env.example`](.env.example).
+
+---
+
+## Useful Docker commands
 
 ```bash
-cd backend && PYTHONPATH=. python -m pytest tests/ -v
+docker compose up -d --build          # start stack
+docker compose down                   # stop
+docker compose down -v                # stop + delete DB volume
+docker compose logs -f api            # API logs
+docker compose logs -f ui             # nginx UI logs
+docker compose exec api alembic current
 ```
+
+---
+
+## Notes
+
+- Postgres is not published to the host by default (API connects via Docker network `db`).
+- On macOS, MLflow UI defaults to port **5050** (port 5000 is often used by AirPlay).
+- Redis improves logout semantics when `REDIS_URL` is set; auth works without it.
+- Menu PDFs that are scanned images need Tesseract in the API container (`docker compose up --build api`).
+
+---
+
+## License
+
+This repository is provided for educational and portfolio use. Check with the maintainer before production deployment.
