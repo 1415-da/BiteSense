@@ -7,7 +7,11 @@ from bs4 import BeautifulSoup
 
 from app.menu_extraction.ocr_image import extract_image_text, tesseract_available
 from app.menu_extraction.parser import ParsedItem, confidence_score, parse_menu_text
-from app.menu_extraction.pdf_text import extract_pdf_text
+from app.menu_extraction.pdf_text import extract_pdf_text_full
+
+
+def _is_pdf_bytes(data: bytes) -> bool:
+    return len(data) >= 4 and data[:4] == b"%PDF"
 
 
 def extract_from_text(raw_text: str) -> tuple[list[dict[str, object]], int, str]:
@@ -26,8 +30,8 @@ def extract_from_bytes(
     ct = (content_type or "").lower()
     name = (filename or "").lower()
 
-    if "pdf" in ct or name.endswith(".pdf"):
-        raw_text = extract_pdf_text(data)
+    if "pdf" in ct or name.endswith(".pdf") or _is_pdf_bytes(data):
+        raw_text = extract_pdf_text_full(data)
         items, conf, _ = extract_from_text(raw_text)
         return items, conf, raw_text
 

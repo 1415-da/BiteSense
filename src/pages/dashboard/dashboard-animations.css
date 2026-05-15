@@ -1,0 +1,218 @@
+/* Parsed dishes table */
+.parsed-dishes-table-wrap {
+  overflow-x: auto;
+  border-radius: 0.65rem;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.parsed-dishes-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  table-layout: fixed;
+}
+
+.parsed-dishes-table thead th {
+  padding: 0.7rem 1rem;
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.parsed-dishes-table thead th:first-child {
+  width: 34%;
+}
+
+.parsed-dishes-table tbody td {
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: top;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.parsed-dishes-table tbody tr {
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.parsed-dishes-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.parsed-dishes-table tbody tr.is-selected {
+  background: rgba(41, 201, 139, 0.1);
+  box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+.parsed-dishes-table tbody tr.is-selected td:first-child {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.parsed-dishes-table .col-ingredients {
+  color: var(--text-secondary);
+}
+
+.parsed-dishes-select {
+  width: 100%;
+  cursor: pointer;
+}
+
+.parsed-dishes-preview {
+  margin-top: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(41, 201, 139, 0.25);
+  background: rgba(41, 201, 139, 0.06);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.parsed-dishes-preview strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Interactive glass cards */
+.glass-card-interactive {
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.glass-card-interactive:hover {
+  border-color: rgba(41, 201, 139, 0.35);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(41, 201, 139, 0.08);
+}
+
+.recommendation-card {
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.28s ease,
+    border-color 0.28s ease;
+}
+
+.recommendation-card:hover {
+  border-color: rgba(41, 201, 139, 0.4) !important;
+  box-shadow:
+    0 16px 40px -14px rgba(0, 0, 0, 0.65),
+    0 0 24px rgba(41, 201, 139, 0.12);
+}
+
+.recommendation-card .macro-bar-fill {
+  transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+details.parsed-dishes-details > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+details.parsed-dishes-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.parsed-dishes-details > summary::after {
+  content: '▾';
+  float: right;
+  color: var(--text-muted);
+  transition: transform 0.25s ease;
+}
+
+details.parsed-dishes-details[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+/* Dashboard metric tiles */
+.dashboard-metric-tile {
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
+}
+
+.dashboard-metric-tile:hover {
+  border-color: rgba(41, 201, 139, 0.3);
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.45);
+}
+
+/* Sidebar nav */
+.dashboard-nav-btn {
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.dashboard-nav-btn:hover:not(:disabled) {
+  border-color: rgba(41, 201, 139, 0.35);
+  color: var(--text-primary);
+}
+
+.dashboard-nav-btn.is-active {
+  box-shadow: 0 0 20px rgba(41, 201, 139, 0.15);
+}
+
+/* Success / highlight panels */
+.dashboard-success-panel {
+  border-radius: 1rem;
+  padding: 1.75rem 1.5rem;
+  border: 1px solid rgba(41, 201, 139, 0.45);
+  background: rgba(41, 201, 139, 0.08);
+}
+
+/* History list rows */
+.dashboard-history-row {
+  transition: background 0.2s ease;
+}
+
+.dashboard-history-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Chip / toggle buttons */
+.dashboard-chip-btn {
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.dashboard-chip-btn:hover {
+  transform: translateY(-1px);
+}
+
+.dashboard-chip-btn:active {
+  transform: scale(0.98);
+}
+
+/* Primary actions */
+.dashboard-main.glass {
+  transition: box-shadow 0.35s ease;
+}
+
+.dashboard-main.glass:hover {
+  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.5);
+}
+
+/* Empty state cards */
+.dashboard-empty-state {
+  border-radius: 1rem;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  border: 1px dashed var(--border);
+}

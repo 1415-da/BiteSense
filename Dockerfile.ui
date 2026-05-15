@@ -6,7 +6,8 @@ RUN npm ci
 COPY index.html vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json eslint.config.js ./
 COPY src ./src
 COPY public ./public
-ARG VITE_PUBLIC_API_BASE_URL=http://localhost:8000
+# Empty = browser uses same-origin /api (nginx proxies to the api service in Compose).
+ARG VITE_PUBLIC_API_BASE_URL=
 ENV VITE_PUBLIC_API_BASE_URL=$VITE_PUBLIC_API_BASE_URL
 RUN npm run build
 

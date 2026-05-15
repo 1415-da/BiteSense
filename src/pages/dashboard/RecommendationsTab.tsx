@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { Filter, ScanLine, ShieldAlert, Target } from 'lucide-react';
 
 import { fetchRecommendationMetrics, type GoalsDto, type HealthDto } from '../../api/workspace';
@@ -6,6 +7,7 @@ import type { DashboardTab } from './types';
 import DashboardTabShell from './DashboardTabShell';
 import RecommendationCard from './RecommendationCard';
 import type { ScanRecommendationsPayload } from './recommendationModel';
+import { staggerContainer, staggerItem, springGentle } from './dashboardMotion';
 import { inputStyle } from './styles';
 
 const TOP_MATCH_LIMIT = 6;
@@ -31,8 +33,12 @@ interface RecommendationsTabProps {
 }
 
 const GoalsGuardrailsSnapshot: React.FC<{ goals: GoalsDto; health: HealthDto }> = ({ goals, health }) => (
-  <div
-    className="glass"
+  <motion.div
+    className="glass glass-card-interactive"
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ ...springGentle, delay: 0.08 }}
+    whileHover={{ y: -2 }}
     style={{
       borderRadius: '0.75rem',
       padding: '0.6rem 0.75rem',
@@ -133,7 +139,7 @@ const GoalsGuardrailsSnapshot: React.FC<{ goals: GoalsDto; health: HealthDto }> 
         ))
       )}
     </div>
-  </div>
+  </motion.div>
 );
 
 const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, scanRecommendations, goals, health }) => {
@@ -321,8 +327,11 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, sca
           alignItems: 'stretch',
         }}
       >
-        <div
-          className="glass"
+        <motion.div
+          className="glass glass-card-interactive"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={springGentle}
           style={{
             borderRadius: '0.75rem',
             padding: '0.6rem 0.75rem',
@@ -365,7 +374,7 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, sca
               New scan
             </button>
           </div>
-        </div>
+        </motion.div>
         <GoalsGuardrailsSnapshot goals={goals} health={health} />
       </div>
 
@@ -391,11 +400,18 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ onNavigate, sca
         </>
       )}
 
-      <div className="recommendations-matches-grid">
+      <motion.div
+        className="recommendations-matches-grid"
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
+      >
         {gridRows.map((row) => (
-          <RecommendationCard key={row.id} data={row} isTopMatch={row.rank === 1} />
+          <motion.div key={row.id} variants={staggerItem} transition={springGentle}>
+            <RecommendationCard data={row} isTopMatch={row.rank === 1} />
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
       {filtered.length === 0 && (
         <div className="glass" style={{ borderRadius: '1rem', padding: '1.25rem', textAlign: 'center', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
           No dishes match your filters. Try lowering the minimum score or clearing search, then Apply.

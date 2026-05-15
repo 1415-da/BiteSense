@@ -1,13 +1,10 @@
-import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from alembic import command
-from alembic.config import Config
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.db_migrate import run_migrations
 from app.redis_client import redis_ping_ok
 from app.routers.auth import router as auth_router
 from app.routers.me import router as me_router
@@ -15,23 +12,10 @@ from app.routers.recommendations import router as recommendations_router
 from app.routers.saved_meals import router as saved_meals_router
 from app.routers.scans import router as scans_router
 
-logger = logging.getLogger(__name__)
-
-
-def _run_alembic_upgrade() -> None:
-    """Apply all pending Alembic migrations (equivalent to `alembic upgrade head`)."""
-    backend_root = Path(__file__).resolve().parents[1]
-    ini_path = backend_root / "alembic.ini"
-    cfg = Config(str(ini_path))
-    cfg.set_main_option("script_location", str(backend_root / "alembic"))
-    cfg.set_main_option("sqlalchemy.url", settings.database_url)
-    command.upgrade(cfg, "head")
-    logger.info("Alembic migrations applied (upgrade head).")
-
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    _run_alembic_upgrade()
+    run_migrations()
     yield
 
 

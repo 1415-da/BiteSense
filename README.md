@@ -11,15 +11,16 @@
 3. Verify backend health:
    - `http://localhost:8000/health`
 
-4. **Web UI in Docker** (static build + nginx):
-   - `docker compose up -d --build ui` — open **`http://localhost:3000`** (override host port with **`UI_HOST_PORT`** in `.env`).
-   - The browser calls the API at **`VITE_PUBLIC_API_BASE_URL`** (default `http://localhost:8000`); ensure **`CORS_ALLOWED_ORIGINS`** in `.env` includes your UI origin (defaults now include `http://localhost:3000`).
+4. **Web UI in Docker** (static build + nginx on host port **3000**):
+   - `docker compose up -d --build ui` — open **`http://localhost:3000`** (override with **`UI_HOST_PORT`** in `.env`).
+   - API calls use same-origin **`/api`** (nginx proxies to the `api` service), same pattern as Vite dev on **5173**.
 
-5. **Redis** (cache/sessions — optional until the app uses it):
+5. (Optional) run the Vite dev server on the host (**port 5173**):
+   - `npm run dev` — open **`http://localhost:5173`**
+   - Leave **`VITE_PUBLIC_API_BASE_URL`** empty in `.env` so `/api` is proxied to **`http://127.0.0.1:8000`**.
+
+6. **Redis** (cache/sessions — optional until the app uses it):
    - `docker compose up -d redis` — **`localhost:6379`** (or **`REDIS_HOST_PORT`**). Data in volume **`redis_data`**.
-
-6. (Optional) run the frontend dev server on the host instead:
-   - `npm run dev`
 
 7. (Optional) open DB UI (Adminer):
    - `http://localhost:8081`

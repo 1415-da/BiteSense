@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import CurrentUser, MlMetricsAccess
 from app.ml import metrics as rec_metrics
-from app.menu_extraction.dishes import rows_to_rank_entries
+from app.menu_extraction.dishes import rows_to_dish_rows
 from app.ml.ranker import GoalInputs, HealthInputs, rank_dishes
 from app.models import MenuScan, RecommendationResult, RecommendationRun, UserGoals, UserHealth
 from app.schemas_recommendations import (
@@ -116,12 +116,12 @@ def rank_menu(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No menu scan available")
 
     dishes_raw = list(scan.dishes or [])
-    dish_entries = rows_to_rank_entries(dishes_raw)
-    if not dish_entries:
+    dish_rows = rows_to_dish_rows(dishes_raw)
+    if not dish_rows:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Scan has no dishes")
 
     goals, health = _load_goals_health(db, user.id)
-    ranked, n_filtered, blend_info = rank_dishes(dish_entries, goals, health, top_n=body.top_n)
+    ranked, n_filtered, blend_info = rank_dishes(dish_rows, goals, health, top_n=body.top_n)
     mv = rec_metrics.resolve_model_version(surrogate_used=bool(blend_info.get("surrogate_used")))
 
     latency_s = time.perf_counter() - t0
@@ -144,13 +144,13 @@ def rank_menu(
             "max_sodium_mg": health.max_sodium_mg,
             "max_sugar_g": health.max_sugar_g,
         },
-        "dish_count": len(dish_entries),
+        "dish_count": len(dish_rows),
         "scan_id": scan.id,
     }
     metrics_payload: dict[str, object] = {
         "model_version": mv,
         "latency_ms": latency_ms,
-        "input_dishes": len(dish_entries),
+        "input_dishes": len(dish_rows),
         "filtered_out": n_filtered,
         "output_dishes": len(ranked),
         "surrogate_used": blend_info.get("surrogate_used"),
@@ -182,6 +182,8 @@ def rank_menu(
             "sugar_g": feat.sugar_g,
             "fiber_g": feat.fiber_g,
             "cooking_score": feat.cooking_score,
+            "ingredients": list(feat.ingredients),
+            "estimate_source": feat.estimate_source,
         }
         res = RecommendationResult(
             run_id=run_row.id,

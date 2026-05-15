@@ -1,8 +1,12 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { Check, SlidersHorizontal, Sparkles, Star, Target } from 'lucide-react';
 
 import type { RecommendationCardData } from './recommendationModel';
+import { fadeUp, springGentle } from './dashboardMotion';
 import MatchScorePill from './MatchScorePill';
+
+import './dashboard-animations.css';
 
 interface MacroRowProps {
   label: string;
@@ -11,12 +15,12 @@ interface MacroRowProps {
 }
 
 const MacroRow: React.FC<MacroRowProps> = ({ label, grams, fillPct }) => (
-  <div style={{ marginBottom: '0.45rem' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.3rem' }}>
+  <motion.div style={{ marginBottom: '0.45rem' }} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.08 }}>
+    <motion.div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.3rem' }}>
       <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{label}</span>
       <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>{grams}g</span>
-    </div>
-    <div
+    </motion.div>
+    <motion.div
       style={{
         height: '4px',
         borderRadius: '999px',
@@ -24,17 +28,20 @@ const MacroRow: React.FC<MacroRowProps> = ({ label, grams, fillPct }) => (
         overflow: 'hidden',
       }}
     >
-      <div
+      <motion.div
+        className="macro-bar-fill"
+        initial={{ width: 0 }}
+        animate={{ width: `${fillPct}%` }}
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: 0.12 }}
         style={{
           height: '100%',
-          width: `${fillPct}%`,
           borderRadius: '999px',
           background: 'linear-gradient(90deg, #1a8f5c, var(--accent-primary))',
           boxShadow: '0 0 10px rgba(41, 201, 139, 0.4)',
         }}
       />
-    </div>
-  </div>
+    </motion.div>
+  </motion.div>
 );
 
 interface RecommendationCardProps {
@@ -46,8 +53,12 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
   const metaLine = [data.restaurant, data.mealType, `${data.calories} kcal`].filter(Boolean).join(' · ');
 
   return (
-    <div
+    <motion.div
       className="recommendation-card"
+      initial={fadeUp.initial}
+      animate={fadeUp.animate}
+      whileHover={{ scale: 1.015, y: -3, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
+      transition={springGentle}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -61,7 +72,7 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
         WebkitBackdropFilter: 'blur(14px)',
       }}
     >
-      <div
+      <motion.div
         style={{
           padding: '1rem 1rem 0.75rem',
           borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
@@ -71,9 +82,12 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
           gap: '0.65rem',
         }}
       >
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <motion.div style={{ minWidth: 0, flex: 1 }}>
           {isTopMatch && (
-            <div
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 28 }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -91,12 +105,12 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
             >
               <Target size={11} />
               Top match
-            </div>
+            </motion.div>
           )}
           <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.25 }}>{data.dishName}</h3>
           <p style={{ margin: '0.35rem 0 0', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.35 }}>{metaLine}</p>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
+        </motion.div>
+        <motion.div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem' }}>
           <MatchScorePill icon={Star} variant="accent">
             {data.score} / 100
           </MatchScorePill>
@@ -105,17 +119,17 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
               Hybrid {data.scoreHeuristic} · ML {data.scoreMl}
             </span>
           )}
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
-      <div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        <div style={{ marginBottom: '0.45rem' }}>
+      <motion.div style={{ padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <motion.div style={{ marginBottom: '0.45rem' }}>
           <MacroRow label="Protein" grams={data.proteinG} fillPct={data.proteinFill} />
           <MacroRow label="Carbs" grams={data.carbsG} fillPct={data.carbsFill} />
           <MacroRow label="Fat" grams={data.fatG} fillPct={data.fatFill} />
-        </div>
+        </motion.div>
 
-        <div
+        <motion.div
           style={{
             marginTop: 'auto',
             paddingTop: '0.5rem',
@@ -125,7 +139,7 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
           }}
           className="no-scrollbar"
         >
-          <div
+          <motion.div
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -140,17 +154,23 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
           >
             <Sparkles size={12} />
             Why it matches
-          </div>
+          </motion.div>
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '0.35rem' }}>
-            {data.whyMatch.map((line) => (
-              <li key={line} style={{ display: 'flex', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            {data.whyMatch.map((line, i) => (
+              <motion.li
+                key={line}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 + i * 0.05 }}
+                style={{ display: 'flex', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}
+              >
                 <Check size={14} color="var(--accent-primary)" style={{ flexShrink: 0, marginTop: '0.08rem' }} />
                 <span>{line}</span>
-              </li>
+              </motion.li>
             ))}
           </ul>
 
-          <div
+          <motion.div
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -166,10 +186,16 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
           >
             <SlidersHorizontal size={12} />
             Smart modifications
-          </div>
+          </motion.div>
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '0.32rem' }}>
-            {data.smartMods.map((line) => (
-              <li key={line} style={{ display: 'flex', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            {data.smartMods.map((line, i) => (
+              <motion.li
+                key={line}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 + i * 0.05 }}
+                style={{ display: 'flex', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}
+              >
                 <span
                   style={{
                     color: 'var(--accent-primary)',
@@ -182,12 +208,12 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({ data, isTopMatc
                   }}
                 />
                 <span>{line}</span>
-              </li>
+              </motion.li>
             ))}
           </ul>
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+    </motion.div>
   );
 };
 

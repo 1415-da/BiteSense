@@ -23,8 +23,35 @@ _NUTRITION_RE = re.compile(
 _DISH_WITH_PRICE = re.compile(
     r"^\s*(.+?)\s*\((\d{2,4})\)\s*:?\s*(.*)$",
 )
+# Trailing price: "Chicken Tikka ........ $12.99" or "Paneer Tikka $12.99"
+_DISH_TRAILING_DOTS_PRICE = re.compile(
+    r"^\s*(.+?)\s+(?:\.{2,}|…+)\s*[\$₹]?\s*(\d{1,4}(?:\.\d{2})?)\s*$",
+)
+_DISH_TRAILING_CURRENCY = re.compile(
+    r"^\s*(.+?)\s+[\$₹]\s*(\d{1,4}(?:\.\d{2})?)\s*$",
+)
+# "Dish name    395" (wide spacing before plain integer price)
+_DISH_TRAILING_PLAIN_PRICE = re.compile(r"^\s*(.+?)\s{2,}(\d{2,4})\s*$")
+# Numbered list: "1. Margherita Pizza" or "12) Caesar Salad"
+_DISH_NUMBERED = re.compile(r"^\s*\d{1,3}[\.\)]\s+(.+?)\s*$")
 # Section headers: ALL CAPS short line, or markdown ###
 _SECTION_LIKE = re.compile(r"^\s*#*\s*([A-Z][A-Z0-9\s&\-',]{4,80})\s*$")
+_SKIP_LINE = re.compile(
+    r"(copyright|all rights reserved|www\.|https?://|tel:|phone:|\bpage\s+\d+\b|^\s*total\b|\bsubtotal\b|\btax\b|\bgratuity\b)",
+    re.IGNORECASE,
+)
+_TABLE_HEADERS = frozenset(
+    {
+        "dish",
+        "ingredients used",
+        "ingredients",
+        "item",
+        "menu item",
+        "description",
+        "name",
+    }
+)
+_CUISINE_SECTION = re.compile(r"^.+\s+cuisine\s*$", re.IGNORECASE)
 
 
 def _strip_bullets(s: str) -> str:
@@ -39,6 +66,134 @@ def _extract_nutrition_blob(text: str) -> tuple[str, str | None]:
     nutrition = f"{m.group(1)}g / {m.group(2)} kcal"
     without = text[: m.start()] + text[m.end() :]
     return re.sub(r"\s+", " ", without).strip(" -–—,.;"), nutrition
+
+
+def _clean_dish_name(name: str) -> str:
+    return re.sub(r"\s+", " ", name).strip(" .-–—·|")
+
+
+def _append_item(
+    items: list[ParsedItem],
+    name: str,
+    description: str | None = None,
+    *,
+    ingredients: list[str] | None = None,
+) -> None:
+    name = _clean_dish_name(name)
+    if not name or len(name) < 3:
+        return
+    if len(name) > 512:
+        name = name[:512]
+    ing = [i.strip() for i in (ingredients or []) if i.strip()][:40]
+    items.append(
+        ParsedItem(
+            name=name,
+            description=description[:2000] if description else None,
+            ingredients=ing,
+            details=None,
+        )
+    )
+
+
+def _is_boilerplate_line(ln: str) -> bool:
+    low = ln.strip().lower()
+    if low in _TABLE_HEADERS:
+        return True
+    if _SKIP_LINE.search(ln):
+        return True
+    if _CUISINE_SECTION.match(ln.strip()):
+        return True
+    if low.startswith("prepared for"):
+        return True
+    if "food recognition" in low or "nutrition testing" in low or "ai-powered" in low:
+        return True
+    if low.startswith("a curated collection"):
+        return True
+    if low.startswith("bitesense"):
+        return True
+    return False
+
+
+def _looks_like_ingredient_line(ln: str) -> bool:
+    """Second row of 'Dish / Ingredients Used' tables (comma- or slash-separated lists)."""
+    if _is_boilerplate_line(ln):
+        return False
+    s = ln.strip()
+    if len(s) < 10:
+        return False
+    if "," in s:
+        return True
+    if "/" in s and len(s.split()) >= 2:
+        return True
+    return False
+
+
+def _looks_like_dish_title(ln: str) -> bool:
+    if _is_boilerplate_line(ln):
+        return False
+    s = ln.strip()
+    if len(s) < 3 or len(s) > 80 or not s[0].isupper():
+        return False
+    if s.endswith(":") or "," in s:
+        return False
+    words = s.split()
+    if not 1 <= len(words) <= 8:
+        return False
+    if _DISH_WITH_PRICE.match(s) or _parse_trailing_price_line(s):
+        return False
+    return True
+
+
+def _ingredients_from_line(text: str) -> list[str]:
+    return [p.strip() for p in re.split(r"[,/]", text) if p.strip()]
+
+
+def _parse_trailing_price_line(ln: str) -> tuple[str, str | None] | None:
+    for pat in (_DISH_TRAILING_DOTS_PRICE, _DISH_TRAILING_CURRENCY, _DISH_TRAILING_PLAIN_PRICE):
+        m = pat.match(ln)
+        if m:
+            return _clean_dish_name(m.group(1)), None
+    return None
+
+
+def _parse_fallback_heuristic(lines: list[str]) -> list[ParsedItem]:
+    """When structured patterns find nothing, recover likely dish title lines."""
+    items: list[ParsedItem] = []
+
+    def is_section_line(ln: str) -> bool:
+        s = ln.strip()
+        if len(s) < 6 or len(s) > 90:
+            return False
+        if _SECTION_LIKE.match(s):
+            return True
+        letters = sum(1 for c in s if c.isalpha())
+        up = sum(1 for c in s if c.isupper())
+        return letters > 4 and up / max(letters, 1) > 0.65
+
+    for ln in lines:
+        if _is_boilerplate_line(ln) or is_section_line(ln):
+            continue
+        hit = _parse_trailing_price_line(ln)
+        if hit:
+            _append_item(items, hit[0])
+            continue
+        m = _DISH_NUMBERED.match(ln)
+        if m:
+            body = m.group(1).strip()
+            hit = _parse_trailing_price_line(body)
+            _append_item(items, hit[0] if hit else body)
+            continue
+        if 8 <= len(ln) <= 90 and ln[0].isupper() and not ln.endswith(":"):
+            letters = sum(1 for c in ln if c.isalpha())
+            if letters < 4:
+                continue
+            lower_ratio = sum(1 for c in ln if c.islower()) / letters
+            if lower_ratio > 0.55:
+                continue
+            if re.fullmatch(r"[\d\s\.\-\$₹,]+", ln):
+                continue
+            _append_item(items, ln)
+    return items
 
 
 def _split_ingredient_like(description: str) -> tuple[str, list[str]]:
@@ -66,10 +221,14 @@ def parse_menu_text(text: str) -> list[ParsedItem]:
     i = 0
 
     def is_section_line(ln: str) -> bool:
+        if _is_boilerplate_line(ln):
+            return True
         s = ln.strip()
         if len(s) < 6 or len(s) > 90:
             return False
         if _SECTION_LIKE.match(s):
+            return True
+        if " & " in s and "," not in s and len(s.split()) <= 5:
             return True
         letters = sum(1 for c in s if c.isalpha())
         up = sum(1 for c in s if c.isupper())
@@ -90,6 +249,25 @@ def parse_menu_text(text: str) -> list[ParsedItem]:
         ln = lines[i]
 
         if is_section_line(ln):
+            i += 1
+            continue
+
+        hit = _parse_trailing_price_line(ln)
+        if hit:
+            _append_item(items, hit[0])
+            i += 1
+            continue
+
+        m = _DISH_NUMBERED.match(ln)
+        if m:
+            body = m.group(1).strip()
+            hit = _parse_trailing_price_line(body)
+            name = hit[0] if hit else _clean_dish_name(body)
+            desc_tail = ""
+            if ":" in body and not hit:
+                name_part, _, desc_tail = body.partition(":")
+                name = _clean_dish_name(name_part)
+            _append_item(items, name, desc_tail.strip() or None)
             i += 1
             continue
 
@@ -126,24 +304,35 @@ def parse_menu_text(text: str) -> list[ParsedItem]:
                 )
             continue
 
-        # Try pair: title line + body without price on first line (weak)
-        if (
-            i + 1 < len(lines)
-            and 6 <= len(ln) <= 100
-            and not ln.endswith(":")
-            and lines[i + 1]
-            and not looks_like_new_dish(lines[i + 1])
-            and not is_section_line(lines[i + 1])
-        ):
+        # Dish title + ingredients/detail on next line (table menus, descriptions)
+        if i + 1 < len(lines) and _looks_like_dish_title(ln):
             next_ln = lines[i + 1]
-            if len(next_ln) > 15 and (next_ln[0].islower() or next_ln[:3].islower()):
-                name = re.sub(r"\s+", " ", ln).strip()
+            if _looks_like_ingredient_line(next_ln) and not is_section_line(next_ln):
+                name = _clean_dish_name(ln)
+                ing_list = _ingredients_from_line(next_ln)
+                _append_item(
+                    items,
+                    name,
+                    next_ln if not ing_list else None,
+                    ingredients=ing_list,
+                )
+                i += 2
+                continue
+            if (
+                len(next_ln) > 15
+                and not looks_like_new_dish(next_ln)
+                and not is_section_line(next_ln)
+                and (next_ln[0].islower() or next_ln[:3].islower())
+            ):
+                name = _clean_dish_name(ln)
                 i += 1
                 desc_lines = [next_ln]
                 i += 1
                 while i < len(lines):
                     nxt = lines[i]
-                    if looks_like_new_dish(nxt) or is_section_line(nxt):
+                    if looks_like_new_dish(nxt) or is_section_line(nxt) or _looks_like_dish_title(nxt):
+                        break
+                    if _looks_like_ingredient_line(nxt):
                         break
                     desc_lines.append(nxt)
                     i += 1
@@ -162,6 +351,9 @@ def parse_menu_text(text: str) -> list[ParsedItem]:
                 continue
 
         i += 1
+
+    if not items and len(text.strip()) > 80:
+        items = _parse_fallback_heuristic(lines)
 
     # De-duplicate by name (keep first)
     seen: set[str] = set()
@@ -185,7 +377,13 @@ def confidence_score(raw_text: str, item_count: int) -> int:
         return max(0, min(48, len(text) // 90))
 
     lines = [ln.strip() for ln in text.replace("\r", "\n").split("\n") if ln.strip()]
-    price_line_hits = sum(1 for ln in lines if _DISH_WITH_PRICE.match(ln))
+    price_line_hits = sum(
+        1
+        for ln in lines
+        if _DISH_WITH_PRICE.match(ln)
+        or _parse_trailing_price_line(ln)
+        or _DISH_TRAILING_DOTS_PRICE.match(ln)
+    )
     nutrition_hits = len(_NUTRITION_RE.findall(text))
 
     # Strong signal: number of structured dishes recovered

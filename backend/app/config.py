@@ -57,5 +57,18 @@ class Settings(BaseSettings):
     #: e.g. redis://redis:6379/0 — empty disables Redis-backed auth helpers (refresh cache, access denylist).
     redis_url: str = Field(default="", validation_alias=AliasChoices("REDIS_URL"))
 
+    #: OpenAI-compatible API for natural why_match / smart_mods (optional).
+    openai_api_key: str = Field(default="", validation_alias=AliasChoices("OPENAI_API_KEY"))
+    openai_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        validation_alias=AliasChoices("OPENAI_BASE_URL"),
+    )
+    openai_model: str = Field(default="gpt-4o-mini", validation_alias=AliasChoices("OPENAI_MODEL"))
+    openai_timeout_seconds: float = Field(default=25.0, validation_alias=AliasChoices("OPENAI_TIMEOUT_SECONDS"))
+    bitesense_llm_explanations: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("BITESENSE_LLM_EXPLANATIONS"),
+    )
+
 
 settings = Settings()

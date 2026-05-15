@@ -36,6 +36,10 @@ services:
       BITESENSE_ML_ENSEMBLE_PATH: ${BITESENSE_ML_ENSEMBLE_PATH:-}
       BITESENSE_ML_BLEND_HEURISTIC: ${BITESENSE_ML_BLEND_HEURISTIC:-0.55}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      BITESENSE_LLM_EXPLANATIONS: ${BITESENSE_LLM_EXPLANATIONS:-true}
       # Avoid proxy (Orb/Docker Desktop) breaking httpx/mlflow to internal services
       HTTP_PROXY: ""
       HTTPS_PROXY: ""
@@ -46,7 +50,7 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/models:/app/models:ro
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "python -m app.db_migrate && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   ml-flow:
     build:
@@ -94,9 +98,12 @@ services:
       context: .
       dockerfile: Dockerfile.ui
       args:
-        VITE_PUBLIC_API_BASE_URL: ${VITE_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        # Empty: static UI calls /api on :3000; nginx.ui.conf proxies to api:8000 (same pattern as Vite :5173).
+        VITE_PUBLIC_API_BASE_URL: ""
     container_name: bitesense-ui
     restart: unless-stopped
+    depends_on:
+      - api
     ports:
       - "${UI_HOST_PORT:-3000}:80"
 

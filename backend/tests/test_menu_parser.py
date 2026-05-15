@@ -22,3 +22,55 @@ Goan Prawn Curry (510): Coconut-based curry with rice. (638g / 770 kcal)
     assert len(curries) == 1
     assert curries[0].details and "770" in curries[0].details
     assert curries[0].description and "coconut" in curries[0].description.lower()
+
+
+def test_parser_trailing_dollar_price_with_dots():
+    text = """
+APPETIZERS
+
+Chicken Tikka ........................ $12.99
+Paneer Pakora ........................ $9.50
+"""
+    items = parse_menu_text(text)
+    names = {x.name.lower() for x in items}
+    assert "chicken tikka" in names
+    assert "paneer pakora" in names
+
+
+def test_parser_numbered_items():
+    text = """
+1. Margherita Pizza
+2. Pepperoni Feast
+3. Veggie Supreme
+"""
+    items = parse_menu_text(text)
+    names = {x.name.lower() for x in items}
+    assert "margherita pizza" in names
+    assert len(items) >= 3
+
+
+def test_parser_dish_ingredients_table_format():
+    """Menus with 'Dish' / 'Ingredients Used' columns (PDF text layer)."""
+    text = """
+BiteSense Restaurant Menu
+Indian Cuisine
+Dish
+Ingredients Used
+Butter Chicken
+Chicken, tomato gravy, butter, cream, spices
+Paneer Tikka
+Paneer, yogurt, bell peppers, onions, spices
+Italian Cuisine
+Dish
+Ingredients Used
+Margherita Pizza
+Pizza dough, mozzarella, tomato sauce, basil
+"""
+    items = parse_menu_text(text)
+    names = {x.name.lower() for x in items}
+    assert "butter chicken" in names
+    assert "paneer tikka" in names
+    assert "margherita pizza" in names
+    butter = next(x for x in items if x.name.lower() == "butter chicken")
+    assert butter.ingredients
+    assert any("tomato" in i.lower() for i in butter.ingredients)

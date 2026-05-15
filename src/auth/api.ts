@@ -1,7 +1,29 @@
 import type { AuthUser, TokenResponse } from './types';
 
 /** Empty in dev uses Vite proxy to FastAPI; set VITE_PUBLIC_API_BASE_URL for production. */
-export const API_BASE = import.meta.env.VITE_PUBLIC_API_BASE_URL ?? '';
+export const API_BASE = String(import.meta.env.VITE_PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
+
+const NETWORK_ERROR_HINT =
+  'Cannot reach the API. Start the backend with `docker compose up -d api` (or `uvicorn` on port 8000).';
+
+/** Map browser network failures (Safari: "Load failed", Chrome: "Failed to fetch") to a clear message. */
+export function wrapNetworkError(err: unknown): Error {
+  if (err instanceof TypeError) {
+    return new Error(NETWORK_ERROR_HINT);
+  }
+  if (err instanceof Error && /load failed|failed to fetch|networkerror/i.test(err.message)) {
+    return new Error(NETWORK_ERROR_HINT);
+  }
+  return err instanceof Error ? err : new Error('Request failed');
+}
+
+async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (err) {
+    throw wrapNetworkError(err);
+  }
+}
 
 const ACCESS_KEY = 'bitesense_access_token';
 const REFRESH_KEY = 'bitesense_refresh_token';
@@ -44,7 +66,7 @@ let refreshPromise: Promise<boolean> | null = null;
 async function doRefresh(): Promise<boolean> {
   const refresh = localStorage.getItem(REFRESH_KEY);
   if (!refresh) return false;
-  const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh_token: refresh }),
@@ -82,7 +104,7 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
     if (access) headers.set('Authorization', `Bearer ${access}`);
   }
   const url = `${API_BASE}${path}`;
-  let res = await fetch(url, { ...rest, headers });
+  let res = await apiFetch(url, { ...rest, headers });
 
   if (
     res.status === 401 &&
@@ -97,14 +119,14 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
       const retryHeaders = new Headers(initHeaders);
       const access = localStorage.getItem(ACCESS_KEY);
       if (access) retryHeaders.set('Authorization', `Bearer ${access}`);
-      res = await fetch(url, { ...rest, headers: retryHeaders });
+      res = await apiFetch(url, { ...rest, headers: retryHeaders });
     }
   }
   return res;
 }
 
 export async function loginRequest(email: string, password: string): Promise<TokenResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -118,7 +140,7 @@ export async function registerRequest(
   password: string,
   fullName: string
 ): Promise<TokenResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+  const res = await apiFetch(`${API_BASE}/api/v1/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password, full_name: fullName }),
@@ -137,7 +159,7 @@ export async function logoutRequest(): Promise<void> {
   const refresh = localStorage.getItem(REFRESH_KEY);
   if (!refresh) return;
   const access = localStorage.getItem(ACCESS_KEY);
-  await fetch(`${API_BASE}/api/v1/auth/logout`, {
+  await apiFetch(`${API_BASE}/api/v1/auth/logout`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

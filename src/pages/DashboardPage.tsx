@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, Candy, Flame, History, KeyRound, LogOut, ScanLine, ShieldCheck, Sparkles, Target, Trash2, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -32,8 +32,11 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import dashboardHeroBg from '../assets/dashboard-hero-bg.png';
 import logo from '../assets/logo.png';
+import AnimatedGlassCard from './dashboard/AnimatedGlassCard';
 import DashboardSkeleton from './dashboard/DashboardSkeleton';
+import DashboardTabShell from './dashboard/DashboardTabShell';
 import DashboardToast from './dashboard/DashboardToast';
+import { staggerContainer, tabPanel, springGentle } from './dashboard/dashboardMotion';
 import HealthPreferencesTab from './dashboard/HealthPreferencesTab';
 import HistoryTab from './dashboard/HistoryTab';
 import MatchScorePill from './dashboard/MatchScorePill';
@@ -46,6 +49,7 @@ import {
   mapRecommendRankApiToPayload,
   type ScanRecommendationsPayload,
 } from './dashboard/recommendationModel';
+import ParsedDishesPanel from './dashboard/ParsedDishesPanel';
 import SavedMealsTab from './dashboard/SavedMealsTab';
 import { inputStyle, quickMetricStyle } from './dashboard/styles';
 import { DASHBOARD_TABS, type DashboardTab } from './dashboard/types';
@@ -87,11 +91,20 @@ const DashboardPage: React.FC = () => {
   const [debugIncludeRawText, setDebugIncludeRawText] = React.useState(false);
   const [lastExtractRawText, setLastExtractRawText] = React.useState<string | null>(null);
   const [newItemDraft, setNewItemDraft] = React.useState('');
+  const [selectedDishIdx, setSelectedDishIdx] = React.useState(0);
   const [analysisConfidence, setAnalysisConfidence] = React.useState<number | null>(null);
   const [latestScan, setLatestScan] = React.useState<MenuScanDto | null>(null);
   const [scanSyncing, setScanSyncing] = React.useState(false);
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
   const dismissToast = React.useCallback(() => setToastMessage(null), []);
+
+  React.useEffect(() => {
+    if (parsedItems.length === 0) {
+      setSelectedDishIdx(0);
+    } else if (selectedDishIdx >= parsedItems.length) {
+      setSelectedDishIdx(parsedItems.length - 1);
+    }
+  }, [parsedItems.length, selectedDishIdx]);
   const [workspaceLoading, setWorkspaceLoading] = React.useState(true);
   const [goals, setGoals] = React.useState<GoalsDto>(DEFAULT_GOALS);
   const [health, setHealth] = React.useState<HealthDto>(DEFAULT_HEALTH);
@@ -265,7 +278,12 @@ const DashboardPage: React.FC = () => {
         if (items.length === 0) {
           setParsedItems([]);
           setLatestScan(null);
-          setScanError('No dishes were detected. Try a clearer photo, a text-based PDF, or another menu page.');
+          const hasRaw = Boolean(extracted.raw_text?.trim());
+          setScanError(
+            hasRaw
+              ? 'No dishes were detected from the extracted text. Try another page, enable “Include raw extracted text” to inspect OCR output, or use a menu with clear dish names and prices.'
+              : 'No text could be read from this file. For scanned PDFs, ensure the API container has Tesseract installed (docker compose up -d --build api).'
+          );
           return;
         }
         setParsedItems(items);
@@ -297,14 +315,12 @@ const DashboardPage: React.FC = () => {
   };
 
   const renderOverview = () => (
-    <>
-      <h1 style={{ fontSize: '2.1rem', marginBottom: '0.75rem' }}>Overview</h1>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '1rem' }}>
-        Quick snapshot of your health profile, recent scan activity, and what to do next.
-      </p>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-        <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
+    <DashboardTabShell
+      title="Overview"
+      subtitle="Quick snapshot of your health profile, recent scan activity, and what to do next."
+    >
+      <motion.div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '1rem', marginBottom: '1rem' }} variants={staggerContainer} initial="initial" animate="animate">
+        <AnimatedGlassCard>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 200px', minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
@@ -323,9 +339,9 @@ const DashboardPage: React.FC = () => {
             </div>
             <ProgressRing value={profileCompleteness} size={80} stroke={5} caption="Completeness" />
           </div>
-        </div>
+        </AnimatedGlassCard>
 
-        <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
+        <AnimatedGlassCard delay={0.06}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
             <ScanLine size={18} color="var(--accent-primary)" />
             <h3 style={{ fontSize: '1.05rem' }}>Next Action</h3>
@@ -341,8 +357,8 @@ const DashboardPage: React.FC = () => {
           >
             Scan a New Menu
           </button>
-        </div>
-      </div>
+        </AnimatedGlassCard>
+      </motion.div>
 
       <div
         style={{
@@ -352,7 +368,7 @@ const DashboardPage: React.FC = () => {
           marginBottom: '1rem',
         }}
       >
-        <div style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+        <div className="dashboard-metric-tile" style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Calories fit</p>
             <MatchScorePill icon={Flame} variant="accent">
@@ -361,7 +377,7 @@ const DashboardPage: React.FC = () => {
           </div>
           <SparklineMini trend="up" />
         </div>
-        <div style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+        <div className="dashboard-metric-tile" style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Protein fit</p>
             <MatchScorePill icon={Zap} variant="accent">
@@ -370,7 +386,7 @@ const DashboardPage: React.FC = () => {
           </div>
           <SparklineMini trend="up" />
         </div>
-        <div style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+        <div className="dashboard-metric-tile" style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sodium risk</p>
             <MatchScorePill icon={AlertTriangle} variant="warn">
@@ -379,7 +395,7 @@ const DashboardPage: React.FC = () => {
           </div>
           <SparklineMini trend="warn" />
         </div>
-        <div style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+        <div className="dashboard-metric-tile" style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sugar risk</p>
             <MatchScorePill icon={Candy} variant="accent">
@@ -443,17 +459,15 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
       </div>
-    </>
+    </DashboardTabShell>
   );
 
   const renderScanMenu = () => (
-    <>
-      <h1 style={{ fontSize: '2.1rem', marginBottom: '0.75rem' }}>Scan Menu</h1>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '1rem' }}>
-        Upload a menu URL, image, or PDF to extract dishes and generate personalized recommendations.
-      </p>
-
-      <div className="glass" style={{ borderRadius: '1rem', padding: '1rem', marginBottom: '1rem' }}>
+    <DashboardTabShell
+      title="Scan Menu"
+      subtitle="Upload a menu URL, image, or PDF to extract dishes and generate personalized recommendations."
+    >
+      <AnimatedGlassCard style={{ marginBottom: '1rem' }}>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.7rem' }}>Input method</p>
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
           {(['url', 'image', 'pdf'] as ScanInputMode[]).map((mode) => {
@@ -590,7 +604,7 @@ const DashboardPage: React.FC = () => {
             Reset
           </button>
         </div>
-      </div>
+      </AnimatedGlassCard>
 
       {lastExtractRawText !== null && (
         <div className="glass" style={{ borderRadius: '1rem', padding: '1rem', marginBottom: '1rem' }}>
@@ -632,94 +646,12 @@ const DashboardPage: React.FC = () => {
 
       {parsedItems.length > 0 && (
         <div className="glass" style={{ borderRadius: '1rem', padding: '1rem' }}>
-          <h3 style={{ fontSize: '1.05rem', marginBottom: '0.75rem' }}>Parsed dishes (editable)</h3>
-          <p style={{ margin: '0 0 0.85rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Name, description, nutrition or portion details, and ingredient-style tags are stored with the scan and used for recommendations.
-          </p>
-          <div style={{ display: 'grid', gap: '0.6rem', marginBottom: '0.75rem' }}>
-            {parsedItems.map((item, idx) => (
-              <div
-                key={`dish-${idx}`}
-                style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: '0.75rem',
-                  padding: '0.75rem',
-                }}
-              >
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'flex-start' }}>
-                  <div style={{ display: 'grid', gap: '0.4rem' }}>
-                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dish name</label>
-                    <input
-                      value={item.name}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setParsedItems((cur) => {
-                          const n = [...cur];
-                          n[idx] = { ...n[idx], name: v };
-                          return n;
-                        });
-                      }}
-                      style={inputStyle}
-                    />
-                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</label>
-                    <textarea
-                      value={item.description ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setParsedItems((cur) => {
-                          const n = [...cur];
-                          n[idx] = { ...n[idx], description: v.trim() ? v : null };
-                          return n;
-                        });
-                      }}
-                      rows={2}
-                      placeholder="Preparation, sides, sauces…"
-                      style={{ ...inputStyle, resize: 'vertical', minHeight: '3rem' }}
-                    />
-                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Details</label>
-                    <input
-                      value={item.details ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setParsedItems((cur) => {
-                          const n = [...cur];
-                          n[idx] = { ...n[idx], details: v.trim() ? v : null };
-                          return n;
-                        });
-                      }}
-                      placeholder="Portion / calories (e.g. 456g / 585 kcal)"
-                      style={inputStyle}
-                    />
-                    <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ingredients</label>
-                    <input
-                      value={item.ingredients.join(', ')}
-                      onChange={(e) => {
-                        const ing = e.target.value
-                          .split(',')
-                          .map((s) => s.trim())
-                          .filter(Boolean);
-                        setParsedItems((cur) => {
-                          const n = [...cur];
-                          n[idx] = { ...n[idx], ingredients: ing };
-                          return n;
-                        });
-                      }}
-                      placeholder="Comma-separated (e.g. paneer, tomato, cream)"
-                      style={inputStyle}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    style={{ padding: '0.6rem 0.75rem' }}
-                    onClick={() => setParsedItems((current) => current.filter((_, i) => i !== idx))}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+          <ParsedDishesPanel
+            items={parsedItems}
+            selectedIdx={selectedDishIdx}
+            onSelectIdx={setSelectedDishIdx}
+            onChangeItems={setParsedItems}
+          />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', marginBottom: '0.9rem' }}>
             <input
@@ -777,7 +709,7 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
       )}
-    </>
+    </DashboardTabShell>
   );
 
   const renderAccountSecurity = () => (
@@ -1078,10 +1010,13 @@ const DashboardPage: React.FC = () => {
             {DASHBOARD_TABS.map((tab) => {
               const active = tab === activeTab;
               return (
-                <button
+                <motion.button
                   type="button"
                   key={tab}
+                  className={`dashboard-nav-btn${active ? ' is-active' : ''}`}
                   onClick={() => setActiveTab(tab)}
+                  whileHover={{ x: 4 }}
+                  whileTap={{ scale: 0.98 }}
                   style={{
                     textAlign: 'left',
                     borderRadius: '0.75rem',
@@ -1091,24 +1026,25 @@ const DashboardPage: React.FC = () => {
                     color: active ? 'var(--accent-primary)' : 'var(--text-secondary)',
                     fontWeight: 600,
                     fontSize: '0.95rem',
-                    transition: 'all 0.2s ease',
                   }}
                 >
                   {tab}
-                </button>
+                </motion.button>
               );
             })}
           </nav>
         </aside>
 
-        <motion.main
-          key={activeTab}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-          className="glass"
-          style={{ borderRadius: '1rem', minHeight: '620px', padding: '2rem' }}
-        >
+        <AnimatePresence mode="wait">
+          <motion.main
+            key={activeTab}
+            initial={tabPanel.initial}
+            animate={tabPanel.animate}
+            exit={tabPanel.exit}
+            transition={springGentle}
+            className="glass dashboard-main"
+            style={{ borderRadius: '1rem', minHeight: '620px', padding: '2rem' }}
+          >
           {activeTab === 'Overview' && renderOverview()}
           {activeTab === 'Scan Menu' && renderScanMenu()}
           {activeTab === 'Recommendations' && (
@@ -1150,7 +1086,8 @@ const DashboardPage: React.FC = () => {
             />
           )}
           {activeTab === 'Account & Security' && renderAccountSecurity()}
-        </motion.main>
+          </motion.main>
+        </AnimatePresence>
       </div>
       )}
       <DashboardToast message={toastMessage} onDismiss={dismissToast} />

@@ -11,8 +11,10 @@ import numpy as np
 
 from app.config import settings
 from app.ml.dataset_recommendations import FEATURE_COUNT, vector_from_dish_context
-from app.ml.explanations import build_mods, build_why_lines
-from app.ml.feature_engineering import DishFeatures, dish_tokens_lower, extract_features
+from app.ml.dish_row import DishRow
+from app.ml.explanations import ExplanationContext
+from app.ml.feature_engineering import DishFeatures, dish_tokens_lower, extract_features_from_row
+from app.ml.llm_explanations import enhance_explanations_batch
 from app.ml.scoring import GoalInputs, HealthInputs, macro_fills, score_dish
 from app.ml.surrogate_model import predict_scores_clipped
 
@@ -87,7 +89,6 @@ def _violates_allergen(name: str, allergens: list[str]) -> str | None:
                 return "Possible shellfish allergen match."
         if al in lower:
             return f"Possible allergen match: {a}."
-        # crude token match for multi-word allergens
         parts = re.split(r"[\s,]+", al)
         for p in parts:
             if len(p) >= 3 and p in toks:
@@ -95,19 +96,32 @@ def _violates_allergen(name: str, allergens: list[str]) -> str | None:
     return None
 
 
+def _normalize_dish_rows(
+    dish_rows: list[DishRow] | list[tuple[str, str]],
+) -> list[DishRow]:
+    out: list[DishRow] = []
+    for item in dish_rows:
+        if isinstance(item, DishRow):
+            out.append(item)
+        elif isinstance(item, tuple) and len(item) >= 2:
+            d, s = item[0].strip(), item[1].strip()
+            if d and s:
+                out.append(DishRow(display_name=d, scoring_text=s, ingredients=[]))
+    return out
+
+
 def rank_dishes(
-    dish_entries: list[tuple[str, str]],
+    dish_rows: list[DishRow] | list[tuple[str, str]],
     goals: GoalInputs,
     health: HealthInputs,
     *,
     top_n: int = 6,
 ) -> tuple[list[RankedDish], int, dict[str, Any]]:
     """
-    Rank dishes. Each entry is (display_name, scoring_text): scoring_text includes
-    description/ingredients for filters and features; display_name is shown in the UI.
+    Rank dishes from structured scan rows (name + ingredients).
 
-    When ``BITESENSE_ML_ENSEMBLE_PATH`` loads, ``score`` blends heuristic + surrogate:
-    ``w * heuristic + (1-w) * ml`` with ``w = BITESENSE_ML_BLEND_HEURISTIC``.
+    When ``BITESENSE_ML_ENSEMBLE_PATH`` loads, ``score`` blends heuristic + surrogate.
+    Explanations use ingredient-based estimates + rules; optional LLM polish when configured.
     """
     blend_info: dict[str, Any] = {
         "surrogate_used": False,
@@ -115,14 +129,15 @@ def rank_dishes(
         "mean_heuristic": None,
         "mean_ml": None,
         "mean_final": None,
+        "llm_explanations": bool(settings.openai_api_key.strip() and settings.bitesense_llm_explanations),
     }
+    rows = _normalize_dish_rows(dish_rows)
     filtered = 0
     candidates: list[RankedDish] = []
 
-    for idx, pair in enumerate(dish_entries):
-        if len(pair) != 2:
-            continue
-        display_name, scoring_text = pair[0].strip(), pair[1].strip()
+    for idx, row in enumerate(rows):
+        display_name = row.display_name.strip()
+        scoring_text = row.scoring_text.strip()
         if not display_name or not scoring_text:
             continue
 
@@ -139,11 +154,9 @@ def rank_dishes(
             filtered += 1
             continue
 
-        feat = extract_features(scoring_text, idx)
+        feat = extract_features_from_row(row, idx)
         sc = score_dish(feat, goals, health)
         pf, cf, ff = macro_fills(feat, goals)
-        why = build_why_lines(feat, goals, health, sc)
-        mods = build_mods(feat)
 
         candidates.append(
             RankedDish(
@@ -156,8 +169,8 @@ def rank_dishes(
                 protein_fill=round(pf, 1),
                 carbs_fill=round(cf, 1),
                 fat_fill=round(ff, 1),
-                why_match=why,
-                smart_mods=mods,
+                why_match=[],
+                smart_mods=[],
                 features=feat,
             )
         )
@@ -193,5 +206,23 @@ def rank_dishes(
         blend_info["mean_final"] = round(sum(finals) / len(finals), 4)
 
     candidates.sort(key=lambda r: r.score, reverse=True)
+    protein_order = sorted(range(len(candidates)), key=lambda i: candidates[i].protein_g, reverse=True)
+    protein_rank = {protein_order[i]: i + 1 for i in range(len(protein_order))}
+
     top = candidates[: max(1, top_n)]
+    exp_payload: list[dict[str, Any]] = []
+    for rank_i, c in enumerate(top):
+        idx_in_all = candidates.index(c)
+        ctx = ExplanationContext(
+            rank_among_scan=rank_i + 1,
+            total_ranked=len(candidates),
+            protein_rank=protein_rank.get(idx_in_all, rank_i + 1),
+        )
+        exp_payload.append({"features": c.features, "score": c.score, "ctx": ctx})
+
+    enhanced = enhance_explanations_batch(exp_payload, goals, health)
+    for c, (why, mods) in zip(top, enhanced):
+        c.why_match = why
+        c.smart_mods = mods
+
     return top, filtered, blend_info

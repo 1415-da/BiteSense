@@ -4,47 +4,30 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.ml.dish_row import DishRow, parse_dish_row, rows_to_dish_rows
+
 
 def scoring_text_from_row(raw: Any) -> str:
     """Rich text for ML / allergies: name + description + ingredients + details."""
-    if isinstance(raw, str):
-        return raw.strip()
-    if not isinstance(raw, dict):
+    row = parse_dish_row(raw)
+    if row is None:
         return ""
-    name = str(raw.get("name") or "").strip()
-    parts: list[str] = []
-    if name:
-        parts.append(name)
-    desc = raw.get("description")
-    if isinstance(desc, str) and desc.strip():
-        parts.append(desc.strip())
-    ing = raw.get("ingredients")
-    if isinstance(ing, list):
-        joined = ", ".join(str(x).strip() for x in ing if str(x).strip())
-        if joined:
-            parts.append(joined)
-    det = raw.get("details")
-    if isinstance(det, str) and det.strip():
-        parts.append(det.strip())
-    return " — ".join(parts) if parts else name
+    return row.scoring_text
 
 
 def display_name_from_row(raw: Any) -> str:
-    if isinstance(raw, str):
-        return raw.strip()
-    if isinstance(raw, dict):
-        n = str(raw.get("name") or "").strip()
-        return n
-    return ""
+    row = parse_dish_row(raw)
+    if row is None:
+        return ""
+    return row.display_name
 
 
 def rows_to_rank_entries(rows: list[Any]) -> list[tuple[str, str]]:
     """(display_name, scoring_text) pairs; skips invalid rows."""
     out: list[tuple[str, str]] = []
-    for raw in rows:
-        display = display_name_from_row(raw)
-        score_line = scoring_text_from_row(raw)
-        if not display or not score_line:
-            continue
-        out.append((display, score_line))
+    for row in rows_to_dish_rows(rows):
+        out.append((row.display_name, row.scoring_text))
     return out
+
+
+__all__ = ["DishRow", "rows_to_dish_rows", "rows_to_rank_entries", "scoring_text_from_row", "display_name_from_row"]

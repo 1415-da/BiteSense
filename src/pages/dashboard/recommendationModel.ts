@@ -112,28 +112,60 @@ function pick<T>(arr: T[], seed: number): T {
   return arr[seed % arr.length];
 }
 
-const WHY_POOL: Array<(p: number) => string> = [
-  (p: number) => `High protein (${p}g) — hits your daily target.`,
-  () => 'Lower sodium than most menu items.',
-  () => 'Grilled, not fried — aligned with your goals.',
-  () => 'Fiber-forward sides help steady blood sugar.',
-  () => 'Balanced macros for your weight goal.',
-];
+/** Offline fallback when /recommendations/rank fails — uses scan ingredients when available. */
+function fallbackWhyMatch(dishName: string, ingredients: string[], proteinG: number): string[] {
+  const why: string[] = [];
+  if (ingredients.length > 0) {
+    const shown = ingredients.slice(0, 4).join(', ');
+    why.push(`Uses menu ingredients: ${shown}${ingredients.length > 4 ? '…' : ''}.`);
+  }
+  if (proteinG >= 28) {
+    why.push(`Protein-rich estimate (~${proteinG}g) for this dish.`);
+  } else if (proteinG >= 18) {
+    why.push(`Moderate protein (~${proteinG}g) — pair with a lean side if needed.`);
+  }
+  const lower = `${dishName} ${ingredients.join(' ')}`.toLowerCase();
+  if (/(grilled|steamed|baked|poached)/.test(lower)) {
+    why.push('Lighter preparation cues in the name or ingredients.');
+  }
+  if (why.length === 0) {
+    why.push(`Scored from dish profile for ${dishName}.`);
+  }
+  return why.slice(0, 3);
+}
 
-const MOD_POOL = [
-  'Ask for dressing on the side (-180mg sodium)',
-  'Swap potatoes for greens (-140 kcal)',
-  'Request half portion of sauce (-90 kcal)',
-  'Add extra vegetables (+fiber, minimal calories)',
-];
+function fallbackSmartMods(dishName: string, ingredients: string[]): string[] {
+  const blob = `${dishName} ${ingredients.join(' ')}`.toLowerCase();
+  const mods: string[] = [];
+  if (/soy|sauce|gravy|butter|cream|cheese/.test(blob)) {
+    mods.push('Ask for sauce, gravy, or cheese on the side.');
+  }
+  if (/fried|crispy|tempura|batter/.test(blob)) {
+    mods.push('Request grilled or steamed instead of fried if available.');
+  }
+  if (/rice|pasta|noodle|bread|tortilla/.test(blob)) {
+    mods.push('Swap half the starch for extra vegetables.');
+  }
+  if (mods.length === 0) {
+    mods.push('Confirm portion size with staff; add vegetables when possible.');
+  }
+  return mods.slice(0, 2);
+}
 
 export function buildRecommendationsFromScan(
-  dishes: Array<string | { name: string }>,
+  dishes: Array<string | { name: string; ingredients?: string[] }>,
   meta: { restaurantLabel: string; location: string; lastScanAt: string; confidence: number | null },
 ): ScanRecommendationsPayload {
-  const dishNames = dishes.map((d) => (typeof d === 'string' ? d : d.name)).filter(Boolean);
+  const normalized = dishes
+    .map((d) =>
+      typeof d === 'string'
+        ? { name: d, ingredients: [] as string[] }
+        : { name: d.name, ingredients: d.ingredients ?? [] },
+    )
+    .filter((d) => d.name.trim());
   const mealTypes = ['Lunch', 'Dinner', 'Brunch', 'All day'];
-  const rows: RecommendationCardData[] = dishNames.map((dishName, idx) => {
+  const rows: RecommendationCardData[] = normalized.map((dish, idx) => {
+    const dishName = dish.name.trim();
     const seed = hashString(dishName + String(idx));
     const score = 98 - (idx * 4 + (seed % 5));
     const proteinG = 35 + (seed % 35);
@@ -141,9 +173,8 @@ export function buildRecommendationsFromScan(
     const fatG = 12 + (seed % 22);
     const calories = proteinG * 4 + carbsG * 4 + fatG * 9 + (seed % 80);
 
-    const whyMatch = [pick(WHY_POOL, seed)(proteinG), pick(WHY_POOL, seed + 1)(proteinG), pick(WHY_POOL, seed + 2)(proteinG)];
-
-    const smartMods = [pick(MOD_POOL, seed), pick(MOD_POOL, seed + 3)];
+    const whyMatch = fallbackWhyMatch(dishName, dish.ingredients, proteinG);
+    const smartMods = fallbackSmartMods(dishName, dish.ingredients);
 
     return {
       id: `${meta.lastScanAt}-${idx}-${hashString(dishName)}`,
@@ -175,8 +206,8 @@ export function buildRecommendationsFromScan(
     lastScanAt: meta.lastScanAt,
     confidence: meta.confidence,
     rows,
-    rankInputCount: dishNames.length,
+    rankInputCount: normalized.length,
     rankFilteredCount: 0,
-    rankOutputCount: dishNames.length,
+    rankOutputCount: normalized.length,
   };
 }
