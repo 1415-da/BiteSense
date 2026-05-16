@@ -6,7 +6,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   changePassword,
   createMenuScan,
+  deleteAccount,
   deleteSavedMeal,
+  revokeOtherSessions,
   createSavedMeal,
   extractMenuFromFile,
   extractMenuFromUrl,
@@ -43,7 +45,12 @@ import MatchScorePill from './dashboard/MatchScorePill';
 import ProfileGoalsTab from './dashboard/ProfileGoalsTab';
 import ProgressRing from './dashboard/ProgressRing';
 import RecommendationsTab from './dashboard/RecommendationsTab';
-import SparklineMini from './dashboard/SparklineMini';
+import SparklineMini, { type SparkTrend } from './dashboard/SparklineMini';
+import {
+  buildOverviewMetrics,
+  buildOverviewSummary,
+  overviewTopPicks,
+} from './dashboard/overviewMetrics';
 import {
   buildRecommendationsFromScan,
   mapRecommendRankApiToPayload,
@@ -118,6 +125,8 @@ const DashboardPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [accountNotice, setAccountNotice] = React.useState<string | null>(null);
   const [accountError, setAccountError] = React.useState<string | null>(null);
+  const [deletePassword, setDeletePassword] = React.useState('');
+  const [accountBusy, setAccountBusy] = React.useState(false);
 
   const hydrateFromScan = React.useCallback((scan: MenuScanDto) => {
     const rows = (scan.dishes ?? []).map(normalizeMenuDish).filter((d): d is MenuDishDto => d !== null);
@@ -188,25 +197,34 @@ const DashboardPage: React.FC = () => {
     setProfileEmail(user?.email ?? '');
   }, [user]);
 
+  const [scanRecommendations, setScanRecommendations] = React.useState<ScanRecommendationsPayload | null>(null);
+
   const recentScanSummary = React.useMemo(() => {
     if (!latestScan) {
       return {
         restaurant: 'No scan yet',
         analyzedCount: 0,
-        topPicks: ['-'] as string[],
+        topPicks: ['—'] as string[],
       };
     }
     return {
       restaurant: restaurantName.trim() || latestScan.restaurant_name?.trim() || 'Restaurant scan',
       analyzedCount: parsedItems.length,
-      topPicks: parsedItems.length > 0 ? parsedItems.slice(0, 3).map((d) => d.name) : ['-'],
+      topPicks: overviewTopPicks(scanRecommendations, parsedItems),
     };
-  }, [latestScan, restaurantName, parsedItems]);
+  }, [latestScan, restaurantName, parsedItems, scanRecommendations]);
 
-  const [scanRecommendations, setScanRecommendations] = React.useState<ScanRecommendationsPayload | null>(null);
+  const overviewSummary = React.useMemo(
+    () => buildOverviewSummary(scanRecommendations),
+    [scanRecommendations],
+  );
+
+  const overviewMetricTiles = React.useMemo(
+    () => buildOverviewMetrics(scanRecommendations, goals, health, parsedItems),
+    [scanRecommendations, goals, health, parsedItems],
+  );
 
   React.useEffect(() => {
-    if (activeTab !== 'Recommendations') return;
     if (!latestScan || parsedItems.length === 0) {
       setScanRecommendations(null);
       return;
@@ -233,17 +251,7 @@ const DashboardPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    activeTab,
-    latestScan,
-    parsedItems,
-    restaurantName,
-    cuisineType,
-    location,
-    analysisConfidence,
-    goals,
-    health,
-  ]);
+  }, [latestScan, parsedItems, restaurantName, cuisineType, location, analysisConfidence, goals, health]);
 
   const handleAnalyze = () => {
     void (async () => {
@@ -314,6 +322,13 @@ const DashboardPage: React.FC = () => {
     })();
   };
 
+  const overviewMetricIcon = (id: string) => {
+    if (id === 'protein') return Zap;
+    if (id === 'sodium') return AlertTriangle;
+    if (id === 'sugar') return Candy;
+    return Flame;
+  };
+
   const renderOverview = () => (
     <DashboardTabShell
       title="Overview"
@@ -334,7 +349,24 @@ const DashboardPage: React.FC = () => {
                 Diets: <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{health.diets.length ? health.diets.join(', ') : 'None set'}</span>
               </p>
               <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-                Macro fit vs. targets updates when dish-level nutrition is connected—placeholders below mirror your goals & guardrails.
+                {overviewSummary.topDish ? (
+                  <>
+                    Latest rank:{' '}
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                      {overviewSummary.topDish}
+                    </span>
+                    {overviewSummary.topScore != null ? ` (${overviewSummary.topScore} score)` : ''}
+                    {overviewSummary.avgScore != null ? ` · top-3 avg ${overviewSummary.avgScore}` : ''}
+                    {overviewSummary.filteredCount > 0
+                      ? ` · ${overviewSummary.filteredCount} dish${overviewSummary.filteredCount === 1 ? '' : 'es'} filtered by guardrails`
+                      : ''}
+                    . Metrics below use ingredient-based estimates from your latest scan.
+                  </>
+                ) : latestScan ? (
+                  <>Scan saved — open Recommendations for rankings, or scan again to refresh macro fit.</>
+                ) : (
+                  <>Scan a menu to see macro fit from ingredient estimates vs. your goals and sodium/sugar limits.</>
+                )}
               </p>
             </div>
             <ProgressRing value={profileCompleteness} size={80} stroke={5} caption="Completeness" />
@@ -368,42 +400,27 @@ const DashboardPage: React.FC = () => {
           marginBottom: '1rem',
         }}
       >
-        <div className="dashboard-metric-tile" style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Calories fit</p>
-            <MatchScorePill icon={Flame} variant="accent">
-              Good
-            </MatchScorePill>
-          </div>
-          <SparklineMini trend="up" />
-        </div>
-        <div className="dashboard-metric-tile" style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Protein fit</p>
-            <MatchScorePill icon={Zap} variant="accent">
-              On track
-            </MatchScorePill>
-          </div>
-          <SparklineMini trend="up" />
-        </div>
-        <div className="dashboard-metric-tile" style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sodium risk</p>
-            <MatchScorePill icon={AlertTriangle} variant="warn">
-              Moderate
-            </MatchScorePill>
-          </div>
-          <SparklineMini trend="warn" />
-        </div>
-        <div className="dashboard-metric-tile" style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sugar risk</p>
-            <MatchScorePill icon={Candy} variant="accent">
-              Low
-            </MatchScorePill>
-          </div>
-          <SparklineMini trend="flat" />
-        </div>
+        {overviewMetricTiles.map((tile) => {
+          const Icon = overviewMetricIcon(tile.id);
+          const sparkTrend: SparkTrend = tile.variant === 'warn' && tile.trend === 'flat' ? 'warn' : tile.trend;
+          return (
+            <motion.div
+              key={tile.id}
+              className="dashboard-metric-tile"
+              style={{ ...quickMetricStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: '0 0 0.4rem', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {tile.label}
+                </p>
+                <MatchScorePill icon={Icon} variant={tile.variant}>
+                  {tile.pillLabel}
+                </MatchScorePill>
+              </div>
+              <SparklineMini trend={sparkTrend} value={tile.sparkValue} />
+            </motion.div>
+          );
+        })}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1rem' }}>
@@ -797,9 +814,25 @@ const DashboardPage: React.FC = () => {
             type="button"
             className="btn btn-outline"
             style={{ marginTop: '0.85rem', width: '100%' }}
+            disabled={accountBusy}
             onClick={() => {
-              setAccountNotice('All other sessions revoked (UI only).');
-              setAccountError(null);
+              void (async () => {
+                setAccountBusy(true);
+                setAccountError(null);
+                try {
+                  const res = await revokeOtherSessions();
+                  setAccountNotice(
+                    res.revoked_count > 0
+                      ? `Signed out ${res.revoked_count} other session${res.revoked_count === 1 ? '' : 's'}.`
+                      : 'No other active sessions found.',
+                  );
+                } catch (e) {
+                  setAccountNotice(null);
+                  setAccountError(e instanceof Error ? e.message : 'Could not revoke other sessions.');
+                } finally {
+                  setAccountBusy(false);
+                }
+              })();
             }}
           >
             Sign out other devices
@@ -885,13 +918,46 @@ const DashboardPage: React.FC = () => {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.8rem' }}>
             Deleting your account permanently removes profile data, scan history, and saved meal recommendations.
           </p>
+          <input
+            type="password"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            placeholder="Confirm with your password"
+            style={{ ...inputStyle, marginBottom: '0.75rem' }}
+            autoComplete="current-password"
+          />
           <button
             type="button"
             className="btn btn-outline"
             style={{ borderColor: 'var(--accent-danger)', color: 'var(--accent-danger)', width: '100%' }}
+            disabled={accountBusy}
             onClick={() => {
-              setAccountNotice(null);
-              setAccountError('Account deletion is disabled in this demo build.');
+              void (async () => {
+                setAccountError(null);
+                setAccountNotice(null);
+                if (!deletePassword) {
+                  setAccountError('Enter your password to delete your account.');
+                  return;
+                }
+                if (
+                  !window.confirm(
+                    'Delete your account permanently? This cannot be undone.',
+                  )
+                ) {
+                  return;
+                }
+                setAccountBusy(true);
+                try {
+                  await deleteAccount({ password: deletePassword });
+                  setDeletePassword('');
+                  await logout();
+                  navigate('/');
+                } catch (e) {
+                  setAccountError(e instanceof Error ? e.message : 'Could not delete account.');
+                } finally {
+                  setAccountBusy(false);
+                }
+              })();
             }}
           >
             Delete account

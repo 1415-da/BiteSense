@@ -18,12 +18,25 @@ const COLORS: Record<SparkTrend, string> = {
 
 interface SparklineMiniProps {
   trend: SparkTrend;
+  /** Optional 0–100 hint to nudge curve shape (higher = ends higher on chart). */
+  value?: number;
   width?: number;
   height?: number;
 }
 
-/** Placeholder trend line for health-tech metrics (static SVG). */
-const SparklineMini: React.FC<SparklineMiniProps> = ({ trend, width = 72, height = 32 }) => (
+function pathForValue(value: number | undefined, trend: SparkTrend): string {
+  if (value == null || Number.isNaN(value)) {
+    return PATHS[trend];
+  }
+  const v = Math.max(0, Math.min(100, value));
+  if (v >= 72) return PATHS.up;
+  if (v >= 45) return PATHS.flat;
+  if (v >= 28) return PATHS.warn;
+  return PATHS.down;
+}
+
+/** Mini sparkline driven by metric level and trend. */
+const SparklineMini: React.FC<SparklineMiniProps> = ({ trend, value, width = 72, height = 32 }) => (
   <svg
     width={width}
     height={height}
@@ -34,7 +47,7 @@ const SparklineMini: React.FC<SparklineMiniProps> = ({ trend, width = 72, height
     aria-hidden
   >
     <path
-      d={PATHS[trend]}
+      d={pathForValue(value, trend)}
       stroke={COLORS[trend]}
       strokeWidth="2"
       strokeLinecap="round"

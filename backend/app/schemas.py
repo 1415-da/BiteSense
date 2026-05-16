@@ -62,6 +62,19 @@ class PasswordChange(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class AccountDelete(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+
+
+class RevokeOthersIn(BaseModel):
+    """When set, the matching refresh session stays active; all other sessions are revoked."""
+    refresh_token: str | None = None
+
+
+class RevokeOthersOut(BaseModel):
+    revoked_count: int
+
+
 class GoalsIn(BaseModel):
     primary_goal: str = Field(min_length=1, max_length=64)
     target_weight_kg: str = Field(min_length=1, max_length=32)

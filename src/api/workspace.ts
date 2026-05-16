@@ -196,6 +196,26 @@ export async function changePassword(body: { current_password: string; new_passw
   if (!res.ok) throw new Error(await readApiError(res));
 }
 
+export async function revokeOtherSessions(): Promise<{ revoked_count: number }> {
+  const refresh = localStorage.getItem('bitesense_refresh_token');
+  const res = await apiRequest('/api/v1/me/sessions/revoke-others', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refresh }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as { revoked_count: number };
+}
+
+export async function deleteAccount(body: { password: string }): Promise<void> {
+  const res = await apiRequest('/api/v1/me/account', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+}
+
 export async function postRecommendationsRank(body: { scan_id?: number | null; top_n?: number }): Promise<RecommendRankApiResponse> {
   const res = await apiRequest('/api/v1/recommendations/rank', {
     method: 'POST',

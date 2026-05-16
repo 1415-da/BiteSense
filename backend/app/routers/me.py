@@ -3,17 +3,20 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.auth_utils import hash_password, verify_password
+from app.auth_utils import hash_password, revoke_other_refresh_sessions, verify_password
 from app.database import get_db
 from app.deps import CurrentUser
 from app.models import User, UserGoals, UserHealth
 from app.schemas import (
+    AccountDelete,
     GoalsIn,
     GoalsOut,
     HealthIn,
     HealthOut,
     PasswordChange,
     ProfilePatch,
+    RevokeOthersIn,
+    RevokeOthersOut,
     UserPublic,
 )
 
@@ -60,6 +63,28 @@ def patch_profile(
     db.commit()
     db.refresh(user)
     return UserPublic.model_validate(user)
+
+
+@router.post("/sessions/revoke-others", response_model=RevokeOthersOut)
+def revoke_other_sessions(
+    body: RevokeOthersIn,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> RevokeOthersOut:
+    count = revoke_other_refresh_sessions(db, user.id, body.refresh_token)
+    return RevokeOthersOut(revoked_count=count)
+
+
+@router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)
+def delete_account(
+    body: AccountDelete,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password is incorrect")
+    db.delete(user)
+    db.commit()
 
 
 @router.post("/password", status_code=status.HTTP_204_NO_CONTENT)

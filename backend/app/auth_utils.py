@@ -97,6 +97,34 @@ def rotate_refresh(db: Session, old_row: RefreshToken) -> str:
     return raw
 
 
+def revoke_other_refresh_sessions(db: Session, user_id: int, keep_raw: str | None = None) -> int:
+    keep_hash: str | None = None
+    if keep_raw:
+        keep_hash = hashlib.sha256(keep_raw.encode()).hexdigest()
+    now = dt.datetime.now(dt.UTC)
+    rows = (
+        db.query(RefreshToken)
+        .filter(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+        .all()
+    )
+    revoked = 0
+    from app.redis_auth import mark_refresh_revoked
+    from app.redis_client import get_redis
+
+    rx = get_redis()
+    ttl = max(60, int(settings.refresh_token_expire_days * 86400))
+    for row in rows:
+        if keep_hash is not None and row.token_hash == keep_hash:
+            continue
+        row.revoked_at = now
+        revoked += 1
+        if rx is not None:
+            mark_refresh_revoked(rx, row.token_hash, ttl)
+    if revoked:
+        db.commit()
+    return revoked
+
+
 def revoke_refresh_by_raw(db: Session, raw: str) -> bool:
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
     row = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
